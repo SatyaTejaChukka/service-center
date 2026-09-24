@@ -71,7 +71,7 @@ def get_outstanding_receivables(
     results = []
     total_outstanding = 0
     for inv in invoices:
-        paid = sum(p.amount for p in inv.payments if not p.is_reversal)
+        paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
         balance = max(0, inv.grand_total - paid)
         if balance > 0:
             total_outstanding += balance

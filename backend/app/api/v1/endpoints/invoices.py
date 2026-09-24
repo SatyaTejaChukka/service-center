@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_admin
@@ -80,7 +81,7 @@ def list_invoices(
     results = []
     for inv in invoices:
         jc = inv.job_card
-        paid = sum(p.amount for p in inv.payments if not p.is_reversal)
+        paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
         balance = max(0, inv.grand_total - paid)
         results.append({
             "id": inv.id,
@@ -115,7 +116,7 @@ def get_invoice_detail(
 
     jc = inv.job_card
     all_payments = db.query(Payment).filter(Payment.invoice_id == inv.id).all()
-    paid = sum(p.amount for p in all_payments if not p.is_reversal)
+    paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in all_payments))
     balance = max(0, inv.grand_total - paid)
 
     # Approved lines
@@ -133,6 +134,11 @@ def get_invoice_detail(
     approved_labour = [
         {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total}
         for l in jc.labour_items if l.status in ("APPROVED", "DONE")
+    ] if jc else []
+
+    excluded_labour = [
+        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "status": l.status}
+        for l in jc.labour_items if l.status not in ("APPROVED", "DONE")
     ] if jc else []
 
     return {
@@ -168,6 +174,7 @@ def get_invoice_detail(
         "approved_parts": approved_parts,
         "excluded_parts": excluded_parts,
         "approved_labour": approved_labour,
+        "excluded_labour": excluded_labour,
         "other_charges": [
             {"id": o.id, "description": o.description, "amount": o.amount}
             for o in inv.other_charges
@@ -275,16 +282,30 @@ def finalize_invoice(
 
     sync_invoice_calculations(db, inv)
 
-    # Assign sequential INV-YYYY-NNNNN number
-    inv_number = generate_invoice_number(db)
-    inv.invoice_number = inv_number
-    inv.status = "FINALIZED"
-    inv.finalized_at = datetime.utcnow()
-    inv.finalized_by = current_user.id
+    # Retry loop handles the rare case where two concurrent finalize
+    # requests generate the same sequence number before either commits.
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            inv_number = generate_invoice_number(db)
+            inv.invoice_number = inv_number
+            inv.status = "FINALIZED"
+            inv.finalized_at = datetime.utcnow()
+            inv.finalized_by = current_user.id
 
-    record_audit(db, current_user.id, "INVOICE_FINALIZE", "invoice", str(inv.id), None, {"number": inv_number, "grand_total": inv.grand_total})
-    db.commit()
-    db.refresh(inv)
+            record_audit(db, current_user.id, "INVOICE_FINALIZE", "invoice", str(inv.id), None, {"number": inv_number, "grand_total": inv.grand_total})
+            db.commit()
+            db.refresh(inv)
+            break
+        except IntegrityError:
+            db.rollback()
+            if attempt == max_retries - 1:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate unique invoice number after multiple attempts. Please try again."
+                )
+            # Retry with a fresh sequence number
+            continue
 
     # Auto-generate and save PDF to documents/invoices/YYYY/
     setting = db.query(Setting).filter(Setting.key == "business_profile").first()
@@ -347,11 +368,16 @@ def record_payment(
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.status == "DRAFT":
+        raise HTTPException(
+            status_code=400,
+            detail="Payments can only be recorded on FINALIZED invoices. Please finalise the invoice before recording payments."
+        )
     if inv.status == "VOID":
         raise HTTPException(status_code=400, detail="Cannot record payment against a VOID invoice")
 
     # Current outstanding
-    existing_paid = sum(p.amount for p in inv.payments if not p.is_reversal)
+    existing_paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
     balance = max(0, inv.grand_total - existing_paid)
 
     if req.amount <= 0:
@@ -377,3 +403,62 @@ def record_payment(
     db.commit()
     db.refresh(payment)
     return payment
+
+@router.post("/{invoice_id}/payments/{payment_id}/reverse", response_model=PaymentResponse)
+def reverse_payment(
+    invoice_id: int,
+    payment_id: int,
+    data: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.status == "VOID":
+        raise HTTPException(status_code=400, detail="Cannot reverse payment on a VOID invoice")
+
+    orig_payment = db.query(Payment).filter(
+        Payment.id == payment_id,
+        Payment.invoice_id == inv.id
+    ).first()
+    if not orig_payment:
+        raise HTTPException(status_code=404, detail="Payment record not found on this invoice")
+
+    if orig_payment.is_reversal:
+        raise HTTPException(status_code=400, detail="Cannot reverse an existing reversal entry")
+
+    # Check if already reversed
+    already_reversed = db.query(Payment).filter(
+        Payment.invoice_id == inv.id,
+        Payment.is_reversal == True,
+        Payment.reference == f"REV-{orig_payment.id}"
+    ).first()
+    if already_reversed:
+        raise HTTPException(status_code=400, detail="This payment has already been reversed")
+
+    reason = (data or {}).get("reason", "Receipt correction").strip() if data else "Receipt correction"
+
+    reversal = Payment(
+        invoice_id=inv.id,
+        amount=orig_payment.amount,
+        method=orig_payment.method,
+        reference=f"REV-{orig_payment.id}",
+        is_reversal=True,
+        paid_at=datetime.utcnow(),
+        received_by=current_user.id,
+        note=f"Reversal of payment #{orig_payment.id}: {reason}"
+    )
+    db.add(reversal)
+    db.flush()
+
+    sync_invoice_calculations(db, inv)
+
+    record_audit(
+        db, current_user.id, "PAYMENT_REVERSAL", "payment", str(reversal.id),
+        {"reversed_payment_id": orig_payment.id, "amount": orig_payment.amount},
+        {"reversal_id": reversal.id, "reason": reason}
+    )
+    db.commit()
+    db.refresh(reversal)
+    return reversal

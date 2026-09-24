@@ -37,9 +37,10 @@ except Exception:
     pass
 
 def format_inr(paise: int) -> str:
-    """Formats paise as INR string (e.g. ₹7,400.00)."""
+    """Formats paise as INR string (e.g. ₹7,400.00 or Rs. 7,400.00 fallback)."""
     rupees = paise / 100.0
-    return f"₹{rupees:,.2f}"
+    prefix = "₹" if FONT_REGULAR != "Helvetica" else "Rs. "
+    return f"{prefix}{rupees:,.2f}"
 
 def format_date(dt: Optional[datetime]) -> str:
     if not dt:
@@ -262,7 +263,7 @@ def generate_invoice_pdf(
     ])
 
     # Payment settlement line
-    amount_paid = sum(p.amount for p in invoice.payments if not p.is_reversal) if invoice.payments else 0
+    amount_paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in invoice.payments)) if invoice.payments else 0
     balance = max(0, invoice.grand_total - amount_paid)
     summary_rows.append([Paragraph("Amount Paid:", normal_style), Paragraph(format_inr(amount_paid), right_style)])
     summary_rows.append([Paragraph("<b>Balance Due:</b>", bold_style), Paragraph(f"<b>{format_inr(balance)}</b>", right_bold)])

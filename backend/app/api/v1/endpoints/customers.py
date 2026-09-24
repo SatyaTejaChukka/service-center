@@ -90,7 +90,7 @@ def get_customer_detail(
         inv_data = None
         if inv and inv.status != "VOID":
             lifetime_spend += inv.grand_total
-            paid = sum(p.amount for p in inv.payments if not p.is_reversal)
+            paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
             balance = max(0, inv.grand_total - paid)
             total_outstanding += balance
             inv_data = {
