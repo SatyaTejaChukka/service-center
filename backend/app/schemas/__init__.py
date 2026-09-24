@@ -18,6 +18,23 @@ class UserCreate(BaseModel):
     full_name: str
     role: str = "STAFF"  # ADMIN or STAFF
 
+class UserRegisterRequest(BaseModel):
+    username: str
+    password: str
+    full_name: str
+    role: str = "STAFF"  # ADMIN or STAFF
+    # Admin-specific fields
+    business_name: Optional[str] = None
+    business_address: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_email: Optional[str] = None
+    business_gstin: Optional[str] = None
+    business_upi_id: Optional[str] = None
+    admin_secret_key: Optional[str] = None
+    # Staff-specific fields
+    phone: Optional[str] = None
+    designation: Optional[str] = None
+
 class UserResponse(BaseModel):
     id: int
     username: str

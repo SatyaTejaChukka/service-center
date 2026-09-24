@@ -6,7 +6,6 @@ import { GlobalSearchModal } from './components/search/GlobalSearchModal';
 import { NewJobCardModal } from './components/jobcard/NewJobCardModal';
 import { NewCustomerModal } from './components/customer/NewCustomerModal';
 
-import { SetupWizardPage } from './pages/SetupWizardPage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { JobCardsPage } from './pages/JobCardsPage';
@@ -78,12 +77,7 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. If system has not been initialized with Admin account -> Setup Wizard
-  if (isSetupComplete === false) {
-    return <SetupWizardPage />;
-  }
-
-  // 2. If no authenticated session -> Login
+  // 1. If no authenticated session -> Consistent Home Page (Login & Registration with integrated Setup Wizard)
   if (!user) {
     return <LoginPage />;
   }

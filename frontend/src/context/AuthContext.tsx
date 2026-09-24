@@ -9,23 +9,46 @@ export interface UserProfile {
   is_active: boolean;
 }
 
+export interface WorkshopProfile {
+  name: string;
+  address: string;
+  phone: string;
+  email?: string;
+  gstin?: string;
+  upi_id?: string;
+  terms?: string;
+  footer?: string;
+}
+
 interface AuthContextType {
   user: UserProfile | null;
+  workshop: WorkshopProfile | null;
   token: string | null;
   isSetupComplete: boolean | null;
   loading: boolean;
   login: (token: string, user: UserProfile) => void;
   logout: () => void;
   refreshSetupStatus: () => Promise<void>;
+  refreshWorkshop: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [workshop, setWorkshop] = useState<WorkshopProfile | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('pr_auth_token'));
   const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  const fetchWorkshop = async () => {
+    try {
+      const wp = await apiRequest<WorkshopProfile>('/settings/business');
+      setWorkshop(wp);
+    } catch {
+      // ignore if unauthenticated or not ready
+    }
+  };
 
   const checkSetupAndUser = async () => {
     try {
@@ -37,11 +60,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const me = await apiRequest<UserProfile>('/auth/me');
           setUser(me);
+          await fetchWorkshop();
         } catch {
           // Token expired or invalid
           localStorage.removeItem('pr_auth_token');
           setToken(null);
           setUser(null);
+          setWorkshop(null);
         }
       }
     } catch (err) {
@@ -60,20 +85,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(newToken);
     setUser(newUser);
     setIsSetupComplete(true);
+    fetchWorkshop();
   };
 
   const logout = () => {
     localStorage.removeItem('pr_auth_token');
     setToken(null);
     setUser(null);
+    setWorkshop(null);
   };
 
   const refreshSetupStatus = async () => {
     await checkSetupAndUser();
   };
 
+  const refreshWorkshop = async () => {
+    await fetchWorkshop();
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, isSetupComplete, loading, login, logout, refreshSetupStatus }}>
+    <AuthContext.Provider value={{ user, workshop, token, isSetupComplete, loading, login, logout, refreshSetupStatus, refreshWorkshop }}>
       {children}
     </AuthContext.Provider>
   );
