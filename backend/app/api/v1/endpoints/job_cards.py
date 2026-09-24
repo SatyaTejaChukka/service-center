@@ -66,7 +66,8 @@ def recalculate_job_card_invoice(db: Session, job_card: JobCard) -> Invoice:
         discount_paise=inv.discount,
         tax_paise=inv.tax_total,
         round_off_paise=inv.round_off,
-        payments=payments_calc
+        payments=payments_calc,
+        is_draft=True
     )
 
     inv.parts_total = res.parts_total
@@ -236,6 +237,27 @@ def get_job_card_detail(
             "total_amount": prev_job.invoice.grand_total if prev_job.invoice else 0
         }
 
+    # Estimate vs Approved Summary
+    parts_rec = sum(p.total for p in jc.parts_items if p.status == "RECOMMENDED")
+    parts_appr = sum(p.total for p in jc.parts_items if p.status in ("APPROVED", "USED"))
+    labour_rec = sum(l.total for l in jc.labour_items if l.status == "RECOMMENDED")
+    labour_appr = sum(l.total for l in jc.labour_items if l.status in ("APPROVED", "DONE"))
+    other_tot = jc.invoice.other_charges_total if jc.invoice else 0
+    disc = jc.invoice.discount if jc.invoice else 0
+
+    estimate_summary = {
+        "recommended_parts_total": parts_rec,
+        "approved_parts_total": parts_appr,
+        "estimated_parts_total": parts_rec + parts_appr,
+        "recommended_labour_total": labour_rec,
+        "approved_labour_total": labour_appr,
+        "estimated_labour_total": labour_rec + labour_appr,
+        "other_charges_total": other_tot,
+        "discount": disc,
+        "estimated_grand_total": max(0, (parts_rec + parts_appr + labour_rec + labour_appr + other_tot) - disc),
+        "approved_grand_total": max(0, (parts_appr + labour_appr + other_tot) - disc)
+    }
+
     return {
         "id": jc.id,
         "job_card_number": jc.job_card_number,
@@ -344,7 +366,8 @@ def get_job_card_detail(
                 "changed_at": h.changed_at.strftime("%d/%m/%Y %I:%M %p"),
                 "note": h.note
             } for h in jc.status_history
-        ]
+        ],
+        "estimate_summary": estimate_summary
     }
 
 @router.post("/{job_card_id}/status")
@@ -513,6 +536,45 @@ def delete_labour_item(
     db.commit()
     return {"message": "Labour line removed"}
 
+@router.patch("/{job_card_id}/labour-items/{lid}")
+def update_labour_item(
+    job_card_id: int,
+    lid: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
+    if not jc:
+        raise HTTPException(status_code=404, detail="Job card not found")
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
+    if jc.status == "COMPLETED" and current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
+
+    item = db.query(LabourItem).filter(LabourItem.id == lid, LabourItem.job_card_id == job_card_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Labour line not found")
+
+    if "status" in data:
+        new_status = data["status"].upper()
+        if new_status not in ("RECOMMENDED", "APPROVED", "REJECTED", "DONE"):
+            raise HTTPException(status_code=400, detail="Invalid status for labour item")
+        item.status = new_status
+    if "quantity" in data:
+        item.quantity = float(data["quantity"])
+    if "unit_price" in data:
+        item.unit_price = int(data["unit_price"])
+    if "description" in data and data["description"].strip():
+        item.description = data["description"].strip()
+
+    item.total = calculate_line_total(item.quantity, item.unit_price)
+    db.flush()
+    recalculate_job_card_invoice(db, jc)
+    db.commit()
+    db.refresh(item)
+    return item
+
 @router.post("/{job_card_id}/parts-items")
 def add_part_item(
     job_card_id: int,
@@ -567,6 +629,49 @@ def delete_part_item(
     recalculate_job_card_invoice(db, jc)
     db.commit()
     return {"message": "Part line removed"}
+
+@router.patch("/{job_card_id}/parts-items/{pid}")
+def update_part_item(
+    job_card_id: int,
+    pid: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
+    if not jc:
+        raise HTTPException(status_code=404, detail="Job card not found")
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
+    if jc.status == "COMPLETED" and current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
+
+    item = db.query(PartItem).filter(PartItem.id == pid, PartItem.job_card_id == job_card_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Part line not found")
+
+    if "status" in data:
+        new_status = data["status"].upper()
+        if new_status not in ("RECOMMENDED", "APPROVED", "REJECTED", "USED"):
+            raise HTTPException(status_code=400, detail="Invalid status for part item")
+        item.status = new_status
+    if "quantity" in data:
+        item.quantity = float(data["quantity"])
+    if "unit_price" in data:
+        item.unit_price = int(data["unit_price"])
+    if "description" in data and data["description"].strip():
+        item.description = data["description"].strip()
+    if "unit" in data:
+        item.unit = data["unit"].strip()
+    if "part_number" in data:
+        item.part_number = data["part_number"].strip() or None
+
+    item.total = calculate_line_total(item.quantity, item.unit_price)
+    db.flush()
+    recalculate_job_card_invoice(db, jc)
+    db.commit()
+    db.refresh(item)
+    return item
 
 # --- Approval Workflow ---
 @router.post("/{job_card_id}/approvals")

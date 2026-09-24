@@ -9,11 +9,14 @@ import {
   Lock,
   Ban,
   IndianRupee,
-  FileCheck
+  FileCheck,
+  MessageCircle
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../../lib/api';
 import { formatINR } from '../../lib/formatters';
 import { useAuth } from '../../context/AuthContext';
+import { WhatsAppPreviewModal } from '../common/WhatsAppPreviewModal';
+import { buildInvoiceReceiptMessage, buildReadyForDeliveryMessage } from '../../lib/whatsapp';
 
 interface Props {
   invoiceId: number;
@@ -28,10 +31,15 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   onClose,
   onInvoiceUpdated,
 }) => {
-  const { user } = useAuth();
+  const { user, workshop } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // WhatsApp modal state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppTitle, setWhatsAppTitle] = useState('');
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
 
   // Payment form
   const [showPayModal, setShowPayModal] = useState(false);
@@ -91,6 +99,24 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
       alert(err.message || 'Finalisation failed');
+    }
+  };
+
+  const handleToggleInvoiceItem = async (type: 'labour' | 'part', itemId: number, currentStatus: string) => {
+    if (!data?.job_card_id) return;
+    try {
+      const nextStatus = currentStatus === 'REJECTED' ? 'APPROVED' : 'REJECTED';
+      const endpoint = type === 'labour'
+        ? `/job-cards/${data.job_card_id}/labour-items/${itemId}`
+        : `/job-cards/${data.job_card_id}/parts-items/${itemId}`;
+      await apiRequest(endpoint, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus })
+      });
+      fetchInvoice();
+      if (onInvoiceUpdated) onInvoiceUpdated();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update item status');
     }
   };
 
@@ -269,6 +295,13 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Draft Estimate Adjustment Notice */}
+              {data.status === 'DRAFT' && (
+                <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-xs text-brand-deep">
+                  💡 <b>Quotation / Draft Mode:</b> Use <b>Exclude</b> next to any line to remove items the customer declines, or <b>Include</b> to add them back. Totals recalculate immediately.
+                </div>
+              )}
+
               {/* Approved Parts Table */}
               <div>
                 <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider block mb-2">Parts / Materials</span>
@@ -278,6 +311,7 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                       <th className="text-left pb-1.5">Description</th>
                       <th className="text-right pb-1.5 w-16">Qty</th>
                       <th className="text-right pb-1.5 w-24">Amount</th>
+                      {data.status === 'DRAFT' && <th className="text-right pb-1.5 w-20">Action</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -286,23 +320,74 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                         <td className="py-2 font-medium">{p.description}</td>
                         <td className="py-2 text-right font-mono">{p.quantity} {p.unit}</td>
                         <td className="py-2 text-right font-mono font-semibold">{formatINR(p.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('part', p.id, p.status)}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[10px] cursor-pointer"
+                              title="Exclude from billing"
+                            >
+                              Exclude
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {/* Recommended lines awaiting customer decision */}
+                    {data.recommended_parts && data.recommended_parts.map((p: any) => (
+                      <tr key={p.id} className="bg-amber-50/30">
+                        <td className="py-2 font-medium">
+                          {p.description}
+                          <span className="block text-[10px] text-amber-700 italic">
+                            Recommended — awaiting customer approval
+                          </span>
+                        </td>
+                        <td className="py-2 text-right font-mono">{p.quantity} {p.unit}</td>
+                        <td className="py-2 text-right font-mono font-semibold text-amber-800">{formatINR(p.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('part', p.id, p.status)}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[10px] cursor-pointer"
+                              title="Exclude from billing"
+                            >
+                              Exclude
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {/* Excluded Rejected Lines */}
-                    {data.excluded_parts.map((p: any) => (
-                      <tr key={p.id} className="text-gray-400 bg-amber-50/20">
+                    {data.rejected_parts && data.rejected_parts.map((p: any) => (
+                      <tr key={p.id} className="text-gray-400 bg-red-50/20">
                         <td className="py-2 line-through">
                           {p.description}
-                          <span className="block text-[10px] text-amber-700 italic no-underline">
-                            Awaiting decision / Rejected — excluded from bill
+                          <span className="block text-[10px] text-red-600 italic no-underline">
+                            Customer rejected — excluded from billing
                           </span>
                         </td>
-                        <td className="py-2 text-right font-mono line-through">{p.quantity}</td>
-                        <td className="py-2 text-right font-mono line-through">{formatINR(p.quantity * p.unit_price)}</td>
+                        <td className="py-2 text-right font-mono line-through">{p.quantity} {p.unit}</td>
+                        <td className="py-2 text-right font-mono line-through">{formatINR(p.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('part', p.id, p.status)}
+                              className="px-2 py-0.5 rounded bg-green-50 hover:bg-green-100 text-green-800 border border-green-300 font-semibold text-[10px] cursor-pointer"
+                              title="Include back in billing"
+                            >
+                              Include
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     <tr className="font-bold border-t border-workshop-border">
-                      <td colSpan={2} className="py-2">Parts Total:</td>
+                      <td colSpan={data.status === 'DRAFT' ? 3 : 2} className="py-2">
+                        {data.status === 'DRAFT' && data.recommended_parts && data.recommended_parts.length > 0 ? 'Parts Estimate:' : 'Parts Total:'}
+                      </td>
                       <td className="py-2 text-right font-mono text-brand-deep">{formatINR(data.parts_total)}</td>
                     </tr>
                   </tbody>
@@ -318,6 +403,7 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                       <th className="text-left pb-1.5">Description</th>
                       <th className="text-right pb-1.5 w-16">Qty</th>
                       <th className="text-right pb-1.5 w-24">Amount</th>
+                      {data.status === 'DRAFT' && <th className="text-right pb-1.5 w-20">Action</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -326,22 +412,74 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                         <td className="py-2 font-medium">{l.description}</td>
                         <td className="py-2 text-right font-mono">{l.quantity}</td>
                         <td className="py-2 text-right font-mono font-semibold">{formatINR(l.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('labour', l.id, l.status)}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[10px] cursor-pointer"
+                              title="Exclude from billing"
+                            >
+                              Exclude
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
-                    {data.excluded_labour && data.excluded_labour.map((l: any) => (
-                      <tr key={l.id} className="text-gray-400 bg-amber-50/20">
+                    {/* Recommended lines awaiting customer decision */}
+                    {data.recommended_labour && data.recommended_labour.map((l: any) => (
+                      <tr key={l.id} className="bg-amber-50/30">
+                        <td className="py-2 font-medium">
+                          {l.description}
+                          <span className="block text-[10px] text-amber-700 italic">
+                            Recommended — awaiting customer approval
+                          </span>
+                        </td>
+                        <td className="py-2 text-right font-mono">{l.quantity}</td>
+                        <td className="py-2 text-right font-mono font-semibold text-amber-800">{formatINR(l.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('labour', l.id, l.status)}
+                              className="px-2 py-0.5 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[10px] cursor-pointer"
+                              title="Exclude from billing"
+                            >
+                              Exclude
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {/* Excluded Rejected Lines */}
+                    {data.rejected_labour && data.rejected_labour.map((l: any) => (
+                      <tr key={l.id} className="text-gray-400 bg-red-50/20">
                         <td className="py-2 line-through">
                           {l.description}
-                          <span className="block text-[10px] text-amber-700 italic no-underline">
-                            Awaiting decision / Rejected — excluded from bill
+                          <span className="block text-[10px] text-red-600 italic no-underline">
+                            Customer rejected — excluded from billing
                           </span>
                         </td>
                         <td className="py-2 text-right font-mono line-through">{l.quantity}</td>
-                        <td className="py-2 text-right font-mono line-through">{formatINR(l.quantity * l.unit_price)}</td>
+                        <td className="py-2 text-right font-mono line-through">{formatINR(l.total)}</td>
+                        {data.status === 'DRAFT' && (
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleInvoiceItem('labour', l.id, l.status)}
+                              className="px-2 py-0.5 rounded bg-green-50 hover:bg-green-100 text-green-800 border border-green-300 font-semibold text-[10px] cursor-pointer"
+                              title="Include back in billing"
+                            >
+                              Include
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     <tr className="font-bold border-t border-workshop-border">
-                      <td colSpan={2} className="py-2">Labour Total:</td>
+                      <td colSpan={data.status === 'DRAFT' ? 3 : 2} className="py-2">
+                        {data.status === 'DRAFT' && data.recommended_labour && data.recommended_labour.length > 0 ? 'Labour Estimate:' : 'Labour Total:'}
+                      </td>
                       <td className="py-2 text-right font-mono text-brand-deep">{formatINR(data.labour_total)}</td>
                     </tr>
                   </tbody>
@@ -366,23 +504,46 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
                 {/* Grand Total */}
                 <div className="flex justify-between items-center text-base font-bold border-t-2 border-workshop-text pt-2 mt-2">
-                  <span className="font-display tracking-wide text-lg">GRAND TOTAL:</span>
+                  <span className="font-display tracking-wide text-lg">
+                    {data.status === 'DRAFT' && ((data.recommended_parts && data.recommended_parts.length > 0) || (data.recommended_labour && data.recommended_labour.length > 0)) ? 'ESTIMATED TOTAL:' : 'GRAND TOTAL:'}
+                  </span>
                   <span className="font-mono text-xl text-brand-deep">{formatINR(data.grand_total)}</span>
                 </div>
 
                 {/* Payment Breakdown */}
-                <div className="border-t border-gray-200 pt-2 space-y-1">
-                  <div className="flex justify-between text-workshop-muted">
-                    <span>Amount Paid:</span>
-                    <span className="font-mono font-semibold">{formatINR(data.amount_paid)}</span>
+                {data.status === 'FINALIZED' ? (
+                  <div className="border-t border-gray-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-workshop-muted">
+                      <span>Amount Paid:</span>
+                      <span className="font-mono font-semibold">{formatINR(data.amount_paid)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-sm text-workshop-text">
+                      <span>Balance Due:</span>
+                      <span className={`font-mono ${data.balance_due > 0 ? 'text-workshop-red' : 'text-workshop-green'}`}>
+                        {formatINR(data.balance_due)}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between font-bold text-sm text-workshop-text">
-                    <span>Balance Due:</span>
-                    <span className={`font-mono ${data.balance_due > 0 ? 'text-workshop-red' : 'text-workshop-green'}`}>
-                      {formatINR(data.balance_due)}
-                    </span>
+                ) : data.amount_paid > 0 ? (
+                  <div className="border-t border-gray-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-workshop-muted">
+                      <span>Advance Received:</span>
+                      <span className="font-mono font-semibold">{formatINR(data.amount_paid)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-sm text-workshop-text">
+                      <span>Estimated Balance on Delivery:</span>
+                      <span className="font-mono text-workshop-text font-semibold">
+                        {formatINR(data.balance_due)}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="border-t border-gray-200 pt-2">
+                    <div className="text-xs text-workshop-muted text-right italic">
+                      Estimate mode &bull; Final settlement recorded upon job completion.
+                    </div>
+                  </div>
+                )}
 
               </div>
 
@@ -454,6 +615,46 @@ export const InvoiceDetailModal: React.FC<Props> = ({
               >
                 <Printer className="w-4 h-4 text-workshop-muted" /> Print / Save PDF
               </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!data) return;
+                  const isPaid = data.balance_due <= 0;
+                  let msg = '';
+                  if (isPaid) {
+                    setWhatsAppTitle('Share Payment Receipt on WhatsApp');
+                    msg = buildInvoiceReceiptMessage({
+                      customerName: data.customer?.name || 'Customer',
+                      vehicleReg: data.vehicle?.registration_number || '',
+                      vehicleModel: `${data.vehicle?.make || ''} ${data.vehicle?.model || ''}`.trim(),
+                      invoiceNo: data.invoice_number,
+                      amountPaidPaise: data.amount_paid,
+                      balanceDuePaise: data.balance_due,
+                      paymentMethod: data.payments && data.payments.length > 0 ? data.payments[data.payments.length - 1].method : 'UPI/Cash',
+                      paymentDate: data.payments && data.payments.length > 0 ? data.payments[data.payments.length - 1].paid_at : new Date().toLocaleDateString('en-IN'),
+                      workshop
+                    });
+                  } else {
+                    setWhatsAppTitle('Share Invoice Bill & UPI Link on WhatsApp');
+                    msg = buildReadyForDeliveryMessage({
+                      customerName: data.customer?.name || 'Customer',
+                      vehicleReg: data.vehicle?.registration_number || '',
+                      vehicleModel: `${data.vehicle?.make || ''} ${data.vehicle?.model || ''}`.trim(),
+                      invoiceNo: data.invoice_number,
+                      grandTotalPaise: data.grand_total,
+                      balanceDuePaise: data.balance_due,
+                      workshop
+                    });
+                  }
+                  setWhatsAppMessage(msg);
+                  setShowWhatsAppModal(true);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
+                title="Share bill / receipt on WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4 fill-white" /> Share on WhatsApp
+              </button>
 
               {data.status === 'DRAFT' && (
                 <>
@@ -710,6 +911,18 @@ export const InvoiceDetailModal: React.FC<Props> = ({
         </div>
       )}
 
+
+      {/* WhatsApp Bill / Receipt Modal */}
+      {data && (
+        <WhatsAppPreviewModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          title={whatsAppTitle}
+          customerName={data.customer?.name || 'Customer'}
+          customerPhone={data.customer?.phone || ''}
+          initialMessage={whatsAppMessage}
+        />
+      )}
 
     </div>
   );

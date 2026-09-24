@@ -13,11 +13,24 @@ import {
   History,
   Check,
   X,
-  CalendarClock
+  CalendarClock,
+  MessageCircle,
+  ChevronDown,
+  Plus,
+  Trash2,
+  Ban,
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
 import { useAuth } from '../context/AuthContext';
+import { WhatsAppPreviewModal } from '../components/common/WhatsAppPreviewModal';
+import {
+  buildEstimateApprovalMessage,
+  buildReadyForDeliveryMessage,
+  buildJobCardIntakeMessage
+} from '../lib/whatsapp';
 
 interface Props {
   jobCardId: number;
@@ -30,16 +43,132 @@ export const JobCardDetailPage: React.FC<Props> = ({
   onBack,
   onNavigateToInvoice,
 }) => {
-  const { user } = useAuth();
+  const { user, workshop } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Catalogs
+  const [labourCatalog, setLabourCatalog] = useState<any[]>([]);
+  const [partsCatalog, setPartsCatalog] = useState<any[]>([]);
+
+  useEffect(() => {
+    apiRequest<any[]>('/catalogs/labour').then(setLabourCatalog).catch(() => {});
+    apiRequest<any[]>('/catalogs/parts').then(setPartsCatalog).catch(() => {});
+  }, []);
 
   // Status transition state
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+
+  // Add Labour Modal state
+  const [showAddLabourModal, setShowAddLabourModal] = useState(false);
+  const [labourDesc, setLabourDesc] = useState('');
+  const [labourRate, setLabourRate] = useState<number>(500);
+  const [labourQty, setLabourQty] = useState<number>(1);
+  const [labourStatus, setLabourStatus] = useState<string>('RECOMMENDED');
+  const [labourCatalogId, setLabourCatalogId] = useState<number | undefined>(undefined);
+
+  // Add Part Modal state
+  const [showAddPartModal, setShowAddPartModal] = useState(false);
+  const [partDesc, setPartDesc] = useState('');
+  const [partNumber, setPartNumber] = useState('');
+  const [partUnit, setPartUnit] = useState('pcs');
+  const [partPrice, setPartPrice] = useState<number>(500);
+  const [partQty, setPartQty] = useState<number>(1);
+  const [partStatus, setPartStatus] = useState<string>('RECOMMENDED');
+  const [partCatalogId, setPartCatalogId] = useState<number | undefined>(undefined);
+
+  // Customer Approval Modal state
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalName, setApprovalName] = useState('');
+  const [approvalMethod, setApprovalMethod] = useState('WHATSAPP');
+  const [approvalNote, setApprovalNote] = useState('');
+  const [approvalsMap, setApprovalsMap] = useState<Record<string, boolean>>({});
+
+  // WhatsApp modal state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppTitle, setWhatsAppTitle] = useState('');
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+  const [showWhatsAppDropdown, setShowWhatsAppDropdown] = useState(false);
+
+  const handleOpenWhatsAppEstimate = () => {
+    if (!data) return;
+    const partsPaise = data.parts_items?.reduce((sum: number, p: any) => p.status !== 'REJECTED' ? sum + p.total : sum, 0) || 0;
+    const labourPaise = data.labour_items?.reduce((sum: number, l: any) => l.status !== 'REJECTED' ? sum + l.total : sum, 0) || 0;
+    const otherPaise = data.invoice?.other_charges_total || 0;
+    const discountPaise = data.invoice?.discount || 0;
+    const grandTotalPaise = Math.max(0, partsPaise + labourPaise + otherPaise - discountPaise);
+
+    // Build work summary list for customer clarity
+    const itemsList: string[] = [];
+    data.labour_items?.filter((l: any) => l.status !== 'REJECTED').forEach((l: any) => {
+      itemsList.push(`• ${l.description} (${formatINR(l.total)})`);
+    });
+    data.parts_items?.filter((p: any) => p.status !== 'REJECTED').forEach((p: any) => {
+      itemsList.push(`• ${p.description} [${p.quantity} ${p.unit}] (${formatINR(p.total)})`);
+    });
+    const workSummary = itemsList.join('\n');
+
+    const msg = buildEstimateApprovalMessage({
+      customerName: data.customer.name,
+      vehicleReg: data.vehicle.registration_number,
+      vehicleModel: `${data.vehicle.make || ''} ${data.vehicle.model || ''}`.trim(),
+      jobCardNo: data.job_card_number,
+      grandTotalPaise: grandTotalPaise,
+      labourTotalPaise: labourPaise,
+      partsTotalPaise: partsPaise,
+      otherChargesPaise: otherPaise,
+      workSummary,
+      workshop
+    });
+    setWhatsAppTitle('Send Estimate for Customer Approval');
+    setWhatsAppMessage(msg);
+    setShowWhatsAppModal(true);
+    setShowWhatsAppDropdown(false);
+  };
+
+  const handleOpenWhatsAppReady = () => {
+    if (!data) return;
+    const paid = data.invoice?.payments ? Math.max(0, data.invoice.payments.reduce((sum: number, p: any) => p.is_reversal ? sum - p.amount : sum + p.amount, 0)) : 0;
+    const grand = data.invoice?.grand_total || 0;
+    const balanceDue = Math.max(0, grand - paid);
+
+    const msg = buildReadyForDeliveryMessage({
+      customerName: data.customer.name,
+      vehicleReg: data.vehicle.registration_number,
+      vehicleModel: `${data.vehicle.make || ''} ${data.vehicle.model || ''}`.trim(),
+      invoiceNo: data.invoice?.invoice_number || undefined,
+      grandTotalPaise: grand,
+      balanceDuePaise: balanceDue,
+      workshop
+    });
+    setWhatsAppTitle('Send Ready for Delivery & UPI Link');
+    setWhatsAppMessage(msg);
+    setShowWhatsAppModal(true);
+    setShowWhatsAppDropdown(false);
+  };
+
+  const handleOpenWhatsAppIntake = () => {
+    if (!data) return;
+    const msg = buildJobCardIntakeMessage({
+      customerName: data.customer.name,
+      vehicleReg: data.vehicle.registration_number,
+      vehicleModel: `${data.vehicle.make || ''} ${data.vehicle.model || ''}`.trim(),
+      jobCardNo: data.job_card_number,
+      date: data.date,
+      odometer: data.odometer,
+      fuelLevel: data.fuel_level,
+      complaints: data.complaints?.map((c: any) => c.description),
+      workshop
+    });
+    setWhatsAppTitle('Send Intake Gatepass on WhatsApp');
+    setWhatsAppMessage(msg);
+    setShowWhatsAppModal(true);
+    setShowWhatsAppDropdown(false);
+  };
 
   const fetchDetail = async () => {
     try {
@@ -76,6 +205,163 @@ export const JobCardDetailPage: React.FC<Props> = ({
     }
   };
 
+  const handleToggleLabourStatus = async (l: any) => {
+    try {
+      const nextStatus = l.status === 'REJECTED' ? 'APPROVED' : 'REJECTED';
+      await apiRequest(`/job-cards/${jobCardId}/labour-items/${l.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update service item');
+    }
+  };
+
+  const handleDeleteLabour = async (lid: number) => {
+    if (!window.confirm('Are you sure you want to remove this service line from the job card?')) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/labour-items/${lid}`, {
+        method: 'DELETE',
+      });
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove service item');
+    }
+  };
+
+  const handleTogglePartStatus = async (p: any) => {
+    try {
+      const nextStatus = p.status === 'REJECTED' ? 'APPROVED' : 'REJECTED';
+      await apiRequest(`/job-cards/${jobCardId}/parts-items/${p.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update part item');
+    }
+  };
+
+  const handleDeletePart = async (pid: number) => {
+    if (!window.confirm('Are you sure you want to remove this part item from the job card?')) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/parts-items/${pid}`, {
+        method: 'DELETE',
+      });
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove part item');
+    }
+  };
+
+  const handleAddLabour = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!labourDesc.trim()) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/labour-items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description: labourDesc.trim(),
+          quantity: Number(labourQty) || 1,
+          unit_price: Math.round(labourRate * 100),
+          status: labourStatus,
+          catalog_id: labourCatalogId || undefined,
+        }),
+      });
+      setLabourDesc('');
+      setLabourRate(500);
+      setLabourQty(1);
+      setLabourCatalogId(undefined);
+      setShowAddLabourModal(false);
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add service item');
+    }
+  };
+
+  const handleAddPart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partDesc.trim()) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/parts-items`, {
+        method: 'POST',
+        body: JSON.stringify({
+          description: partDesc.trim(),
+          part_number: partNumber.trim() || undefined,
+          unit: partUnit,
+          quantity: Number(partQty) || 1,
+          unit_price: Math.round(partPrice * 100),
+          status: partStatus,
+          catalog_id: partCatalogId || undefined,
+        }),
+      });
+      setPartDesc('');
+      setPartNumber('');
+      setPartPrice(500);
+      setPartQty(1);
+      setPartUnit('pcs');
+      setPartCatalogId(undefined);
+      setShowAddPartModal(false);
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add part item');
+    }
+  };
+
+  const handleOpenApprovalModal = () => {
+    if (!data) return;
+    setApprovalName(data.customer?.name || '');
+    const map: Record<string, boolean> = {};
+    data.labour_items?.forEach((l: any) => {
+      map[`l_${l.id}`] = l.status !== 'REJECTED';
+    });
+    data.parts_items?.forEach((p: any) => {
+      map[`p_${p.id}`] = p.status !== 'REJECTED';
+    });
+    setApprovalsMap(map);
+    setShowApprovalModal(true);
+  };
+
+  const handleRecordApprovalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvalName.trim()) {
+      alert('Please provide customer/approver name');
+      return;
+    }
+    const line_approvals: any[] = [];
+    data.labour_items?.forEach((l: any) => {
+      line_approvals.push({
+        type: 'labour',
+        id: l.id,
+        status: approvalsMap[`l_${l.id}`] ? 'APPROVED' : 'REJECTED',
+      });
+    });
+    data.parts_items?.forEach((p: any) => {
+      line_approvals.push({
+        type: 'part',
+        id: p.id,
+        status: approvalsMap[`p_${p.id}`] ? 'APPROVED' : 'REJECTED',
+      });
+    });
+
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/approvals`, {
+        method: 'POST',
+        body: JSON.stringify({
+          approved_by_name: approvalName.trim(),
+          method: approvalMethod,
+          note: approvalNote.trim() || undefined,
+          line_approvals,
+        }),
+      });
+      setShowApprovalModal(false);
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to record customer approvals');
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-workshop-muted animate-pulse">
@@ -97,6 +383,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
   const isCompleted = data.status === 'COMPLETED';
   const isCancelled = data.status === 'CANCELLED';
+  const canEditItems = !isCancelled && !isCompleted && data.invoice?.status !== 'FINALIZED';
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -144,10 +431,63 @@ export const JobCardDetailPage: React.FC<Props> = ({
             <Printer className="w-3.5 h-3.5 text-workshop-muted" /> Print Job Card PDF
           </a>
 
+          {/* WhatsApp Communications Split Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowWhatsAppDropdown(!showWhatsAppDropdown)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
+            >
+              <MessageCircle className="w-3.5 h-3.5 fill-white" />
+              WhatsApp
+              <ChevronDown className="w-3 h-3 ml-0.5" />
+            </button>
+
+            {showWhatsAppDropdown && (
+              <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-workshop-border py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsAppEstimate}
+                  className="w-full text-left px-3.5 py-2 hover:bg-gray-50 flex flex-col text-xs cursor-pointer"
+                >
+                  <span className="font-bold text-workshop-text">📑 Send Service Estimate</span>
+                  <span className="text-[10px] text-workshop-muted">Send quote for 1-click customer approval</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsAppReady}
+                  className="w-full text-left px-3.5 py-2 hover:bg-gray-50 flex flex-col text-xs cursor-pointer border-t border-gray-100"
+                >
+                  <span className="font-bold text-workshop-text">✅ Send Ready for Pickup</span>
+                  <span className="text-[10px] text-workshop-muted">Include bill summary &amp; direct UPI pay link</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsAppIntake}
+                  className="w-full text-left px-3.5 py-2 hover:bg-gray-50 flex flex-col text-xs cursor-pointer border-t border-gray-100"
+                >
+                  <span className="font-bold text-workshop-text">🚗 Send Intake Gatepass</span>
+                  <span className="text-[10px] text-workshop-muted">Check-in confirmation with recorded complaints</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {canEditItems && (
+            <button
+              type="button"
+              onClick={handleOpenApprovalModal}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
+              title="Record customer approvals or exclusions across all line items"
+            >
+              <UserCheck className="w-3.5 h-3.5" /> Customer Decisions
+            </button>
+          )}
+
           {data.invoice && (
             <button
               onClick={() => onNavigateToInvoice(data.invoice.id)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-brand-deep text-white font-semibold text-xs rounded-lg shadow-sm transition"
+              className="flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-brand-deep text-white font-semibold text-xs rounded-lg shadow-sm transition cursor-pointer"
             >
               <Receipt className="w-3.5 h-3.5" /> View / Finalize Invoice
             </button>
@@ -298,18 +638,39 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
       {/* Labour & Parts Breakdown */}
       <div className="bg-white rounded-xl border border-workshop-border overflow-hidden shadow-2xs">
-        <div className="p-4 border-b border-workshop-border flex items-center justify-between">
-          <h3 className="font-bold text-sm text-workshop-text">Service Work &amp; Parts Breakdown</h3>
-          <span className="text-xs text-workshop-muted font-medium">
-            (Only Approved/Used lines contribute to billing totals)
-          </span>
+        <div className="p-4 border-b border-workshop-border flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <h3 className="font-bold text-sm text-workshop-text">Service Work &amp; Parts Breakdown</h3>
+            <span className="text-xs text-workshop-muted font-medium hidden sm:inline">
+              (Only Approved/Used lines contribute to billing totals)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenWhatsAppEstimate}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer"
+            title="Send estimate to customer via WhatsApp for 1-click approval"
+          >
+            <MessageCircle className="w-3.5 h-3.5 fill-white" /> Send Estimate on WhatsApp
+          </button>
         </div>
 
         <div className="p-4 space-y-6">
           
           {/* Labour Items */}
           <div>
-            <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider block mb-2">Labour / Services</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider">Labour / Services</span>
+              {canEditItems && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddLabourModal(true)}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-deep text-white font-semibold text-xs rounded-md shadow-2xs transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Service
+                </button>
+              )}
+            </div>
             <table className="w-full text-left text-xs border border-workshop-border rounded-lg overflow-hidden">
               <thead className="bg-[#F8FAFC] border-b border-workshop-border text-workshop-muted uppercase">
                 <tr>
@@ -318,31 +679,98 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   <th className="p-2.5 text-right">Qty</th>
                   <th className="p-2.5 text-right">Rate</th>
                   <th className="p-2.5 text-right">Line Total</th>
+                  {canEditItems && <th className="p-2.5 text-right w-36">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-workshop-border-soft">
-                {data.labour_items.map((l: any) => (
-                  <tr key={l.id} className={l.status === 'REJECTED' ? 'bg-red-50/30 line-through text-workshop-muted' : ''}>
-                    <td className="p-2.5 font-medium">{l.description}</td>
-                    <td className="p-2.5 text-center">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        l.status === 'APPROVED' || l.status === 'DONE' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {l.status}
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-right font-mono">{l.quantity}</td>
-                    <td className="p-2.5 text-right font-mono">{formatINR(l.unit_price)}</td>
-                    <td className="p-2.5 text-right font-mono font-bold">{formatINR(l.total)}</td>
-                  </tr>
-                ))}
+                {data.labour_items.map((l: any) => {
+                  const isRejected = l.status === 'REJECTED';
+                  const isRecommended = l.status === 'RECOMMENDED';
+                  return (
+                    <tr key={l.id} className={isRejected ? 'bg-red-50/30 text-workshop-muted' : isRecommended ? 'bg-amber-50/20' : ''}>
+                      <td className="p-2.5 font-medium">
+                        <span className={isRejected ? 'line-through text-gray-400' : ''}>{l.description}</span>
+                        {isRecommended && (
+                          <div className="text-[10px] text-amber-700 italic">
+                            Recommended — awaiting customer approval
+                          </div>
+                        )}
+                        {isRejected && (
+                          <div className="text-[10px] text-red-600 italic">
+                            Customer rejected — excluded from billing
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          l.status === 'APPROVED' || l.status === 'DONE'
+                            ? 'bg-green-100 text-green-800'
+                            : isRecommended
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {l.status}
+                        </span>
+                      </td>
+                      <td className="p-2.5 text-right font-mono">{l.quantity}</td>
+                      <td className="p-2.5 text-right font-mono">{formatINR(l.unit_price)}</td>
+                      <td className="p-2.5 text-right font-mono font-bold">
+                        <span className={isRejected ? 'line-through text-gray-400' : ''}>{formatINR(l.total)}</span>
+                      </td>
+                      {canEditItems && (
+                        <td className="p-2.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isRejected ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLabourStatus(l)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-50 hover:bg-green-100 text-green-800 border border-green-300 font-semibold text-[11px] transition cursor-pointer"
+                                title="Include this service in billable work"
+                              >
+                                <Check className="w-3 h-3" /> Include
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleLabourStatus(l)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[11px] transition cursor-pointer"
+                                title="Exclude this service from work & billing"
+                              >
+                                <Ban className="w-3 h-3" /> Exclude
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLabour(l.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                              title="Delete service line"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Parts Items */}
           <div>
-            <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider block mb-2">Parts / Materials</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider">Parts / Materials</span>
+              {canEditItems && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddPartModal(true)}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-brand hover:bg-brand-deep text-white font-semibold text-xs rounded-md shadow-2xs transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Part
+                </button>
+              )}
+            </div>
             <table className="w-full text-left text-xs border border-workshop-border rounded-lg overflow-hidden">
               <thead className="bg-[#F8FAFC] border-b border-workshop-border text-workshop-muted uppercase">
                 <tr>
@@ -352,26 +780,37 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   <th className="p-2.5 text-right">Qty</th>
                   <th className="p-2.5 text-right">Rate</th>
                   <th className="p-2.5 text-right">Line Total</th>
+                  {canEditItems && <th className="p-2.5 text-right w-36">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-workshop-border-soft">
                 {data.parts_items.map((p: any) => {
-                  const isExcluded = p.status === 'REJECTED' || p.status === 'RECOMMENDED';
+                  const isRejected = p.status === 'REJECTED';
+                  const isRecommended = p.status === 'RECOMMENDED';
                   return (
-                    <tr key={p.id} className={isExcluded ? 'bg-amber-50/20 text-workshop-muted' : ''}>
+                    <tr key={p.id} className={isRejected ? 'bg-red-50/30 text-workshop-muted' : isRecommended ? 'bg-amber-50/20' : ''}>
                       <td className="p-2.5 font-medium">
-                        <span className={p.status === 'REJECTED' ? 'line-through' : ''}>{p.description}</span>
+                        <span className={isRejected ? 'line-through text-gray-400' : ''}>{p.description}</span>
                         {p.part_number && <span className="text-gray-400 font-mono ml-1">({p.part_number})</span>}
-                        {isExcluded && (
+                        {isRecommended && (
                           <div className="text-[10px] text-amber-700 italic">
-                            {p.status === 'REJECTED' ? 'Customer rejected — excluded from invoice' : 'Pending decision — excluded from invoice'}
+                            Recommended — awaiting customer approval
+                          </div>
+                        )}
+                        {isRejected && (
+                          <div className="text-[10px] text-red-600 italic">
+                            Customer rejected — excluded from billing
                           </div>
                         )}
                       </td>
                       <td className="p-2.5">{p.unit}</td>
                       <td className="p-2.5 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          p.status === 'APPROVED' || p.status === 'USED' ? 'bg-green-100 text-green-800' : p.status === 'REJECTED' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                          p.status === 'APPROVED' || p.status === 'USED'
+                            ? 'bg-green-100 text-green-800'
+                            : isRecommended
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
                         }`}>
                           {p.status}
                         </span>
@@ -379,8 +818,41 @@ export const JobCardDetailPage: React.FC<Props> = ({
                       <td className="p-2.5 text-right font-mono">{p.quantity}</td>
                       <td className="p-2.5 text-right font-mono">{formatINR(p.unit_price)}</td>
                       <td className="p-2.5 text-right font-mono font-bold">
-                        <span className={isExcluded ? 'line-through text-gray-400' : ''}>{formatINR(p.total)}</span>
+                        <span className={isRejected ? 'line-through text-gray-400' : ''}>{formatINR(p.total)}</span>
                       </td>
+                      {canEditItems && (
+                        <td className="p-2.5 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isRejected ? (
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePartStatus(p)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-50 hover:bg-green-100 text-green-800 border border-green-300 font-semibold text-[11px] transition cursor-pointer"
+                                title="Include this part in billable work"
+                              >
+                                <Check className="w-3 h-3" /> Include
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePartStatus(p)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 hover:bg-red-50 text-amber-900 hover:text-red-700 border border-amber-200 hover:border-red-300 font-semibold text-[11px] transition cursor-pointer"
+                                title="Exclude this part from work & billing"
+                              >
+                                <Ban className="w-3 h-3" /> Exclude
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePart(p.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                              title="Delete part line"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -389,38 +861,112 @@ export const JobCardDetailPage: React.FC<Props> = ({
           </div>
 
           {/* Authoritative Totals Summary Box */}
-          {data.invoice && (
-            <div className="p-4 bg-gray-50 border border-workshop-border rounded-xl space-y-1.5 max-w-sm ml-auto text-xs">
-              <div className="flex justify-between text-workshop-muted">
-                <span>Parts Total:</span>
-                <span className="font-mono font-semibold">{formatINR(data.invoice.parts_total)}</span>
+          {data.invoice && (() => {
+            const hasPendingRecommendations =
+              data.labour_items?.some((l: any) => l.status === 'RECOMMENDED') ||
+              data.parts_items?.some((p: any) => p.status === 'RECOMMENDED');
+            
+            const estSummary = data.estimate_summary;
+            const estParts = estSummary ? estSummary.estimated_parts_total : data.invoice.parts_total;
+            const estLabour = estSummary ? estSummary.estimated_labour_total : data.invoice.labour_total;
+            const estGrand = estSummary ? estSummary.estimated_grand_total : data.invoice.grand_total;
+            const approvedGrand = estSummary ? estSummary.approved_grand_total : data.invoice.grand_total;
+
+            const paidAmount = data.invoice.payments
+              ? Math.max(0, data.invoice.payments.reduce((sum: number, p: any) => p.is_reversal ? sum - p.amount : sum + p.amount, 0))
+              : 0;
+            const balanceDue = Math.max(0, data.invoice.grand_total - paidAmount);
+
+            return (
+              <div className="p-4 bg-gray-50 border border-workshop-border rounded-xl space-y-1.5 max-w-sm ml-auto text-xs">
+                {hasPendingRecommendations ? (
+                  <>
+                    <div className="flex items-center justify-between pb-1 border-b border-workshop-border text-amber-800 font-semibold">
+                      <span>Quotation / Estimate Mode</span>
+                      <span className="text-[10px] bg-amber-100 px-2 py-0.5 rounded-full font-bold">Pending Approval</span>
+                    </div>
+                    <div className="flex justify-between text-workshop-muted pt-1">
+                      <span>Parts Estimate:</span>
+                      <span className="font-mono font-semibold">{formatINR(estParts)}</span>
+                    </div>
+                    <div className="flex justify-between text-workshop-muted">
+                      <span>Labour Estimate:</span>
+                      <span className="font-mono font-semibold">{formatINR(estLabour)}</span>
+                    </div>
+                    {data.invoice.other_charges_total > 0 && (
+                      <div className="flex justify-between text-workshop-muted">
+                        <span>Other Charges:</span>
+                        <span className="font-mono font-semibold">{formatINR(data.invoice.other_charges_total)}</span>
+                      </div>
+                    )}
+                    {data.invoice.discount > 0 && (
+                      <div className="flex justify-between text-workshop-red">
+                        <span>Discount:</span>
+                        <span className="font-mono font-semibold">-{formatINR(data.invoice.discount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-sm text-workshop-text border-t border-workshop-border pt-2">
+                      <span>Estimated Grand Total:</span>
+                      <span className="font-mono text-brand-deep text-base">{formatINR(estGrand)}</span>
+                    </div>
+                    {approvedGrand > 0 && approvedGrand !== estGrand && (
+                      <div className="flex justify-between text-xs text-workshop-green pt-1 border-t border-dashed border-gray-200">
+                        <span>Approved Work so far:</span>
+                        <span className="font-mono font-bold">{formatINR(approvedGrand)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-[11px] text-workshop-muted pt-1">
+                      <span>Invoice State:</span>
+                      <span className="font-bold text-amber-700">DRAFT ESTIMATE</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between text-workshop-muted">
+                      <span>Parts Total:</span>
+                      <span className="font-mono font-semibold">{formatINR(data.invoice.parts_total)}</span>
+                    </div>
+                    <div className="flex justify-between text-workshop-muted">
+                      <span>Labour Total:</span>
+                      <span className="font-mono font-semibold">{formatINR(data.invoice.labour_total)}</span>
+                    </div>
+                    {data.invoice.other_charges_total > 0 && (
+                      <div className="flex justify-between text-workshop-muted">
+                        <span>Other Charges:</span>
+                        <span className="font-mono font-semibold">{formatINR(data.invoice.other_charges_total)}</span>
+                      </div>
+                    )}
+                    {data.invoice.discount > 0 && (
+                      <div className="flex justify-between text-workshop-red">
+                        <span>Discount:</span>
+                        <span className="font-mono font-semibold">-{formatINR(data.invoice.discount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-bold text-sm text-workshop-text border-t border-workshop-border pt-2">
+                      <span>Grand Total:</span>
+                      <span className="font-mono text-brand-deep text-base">{formatINR(data.invoice.grand_total)}</span>
+                    </div>
+                    {paidAmount > 0 && (
+                      <div className="flex justify-between text-workshop-green">
+                        <span>Amount Paid:</span>
+                        <span className="font-mono font-semibold">{formatINR(paidAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs font-bold pt-1 border-t border-gray-200">
+                      <span>Balance Due:</span>
+                      <span className={`font-mono ${balanceDue > 0 ? 'text-workshop-red' : 'text-workshop-green'}`}>
+                        {formatINR(balanceDue)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-workshop-muted pt-1">
+                      <span>Payment Status:</span>
+                      <span className="font-bold text-workshop-green">{data.invoice.payment_status}</span>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex justify-between text-workshop-muted">
-                <span>Labour Total:</span>
-                <span className="font-mono font-semibold">{formatINR(data.invoice.labour_total)}</span>
-              </div>
-              {data.invoice.other_charges_total > 0 && (
-                <div className="flex justify-between text-workshop-muted">
-                  <span>Other Charges:</span>
-                  <span className="font-mono font-semibold">{formatINR(data.invoice.other_charges_total)}</span>
-                </div>
-              )}
-              {data.invoice.discount > 0 && (
-                <div className="flex justify-between text-workshop-red">
-                  <span>Discount:</span>
-                  <span className="font-mono font-semibold">-{formatINR(data.invoice.discount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-bold text-sm text-workshop-text border-t border-workshop-border pt-2">
-                <span>Grand Total:</span>
-                <span className="font-mono text-brand-deep text-base">{formatINR(data.invoice.grand_total)}</span>
-              </div>
-              <div className="flex justify-between text-[11px] text-workshop-muted pt-1">
-                <span>Payment Status:</span>
-                <span className="font-bold text-workshop-green">{data.invoice.payment_status}</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
         </div>
       </div>
@@ -514,6 +1060,437 @@ export const JobCardDetailPage: React.FC<Props> = ({
         </div>
       )}
 
+      {/* WhatsApp Communication Modal */}
+      {data && (
+        <WhatsAppPreviewModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          title={whatsAppTitle}
+          customerName={data.customer?.name || 'Customer'}
+          customerPhone={data.customer?.phone || ''}
+          altPhone={data.customer?.alt_phone}
+          initialMessage={whatsAppMessage}
+        />
+      )}
+      {/* Add Labour Item Modal */}
+      {showAddLabourModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3">
+              <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-brand" /> Add Service / Labour
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddLabourModal(false)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddLabour} className="space-y-3.5 text-xs">
+              {labourCatalog.length > 0 && (
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Pick from Catalog (Optional)</label>
+                  <select
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                    onChange={(e) => {
+                      const sel = labourCatalog.find((c) => c.id === Number(e.target.value));
+                      if (sel) {
+                        setLabourDesc(sel.name);
+                        setLabourRate(sel.default_rate / 100);
+                        setLabourCatalogId(sel.id);
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="">-- Choose from standard services --</option>
+                    {labourCatalog.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({formatINR(c.default_rate)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Service Description *</label>
+                <input
+                  type="text"
+                  required
+                  value={labourDesc}
+                  onChange={(e) => setLabourDesc(e.target.value)}
+                  placeholder="e.g. Wheel Alignment, Brake Service"
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Qty / Units</label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="1"
+                    required
+                    value={labourQty}
+                    onChange={(e) => setLabourQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Rate (₹) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    required
+                    value={labourRate}
+                    onChange={(e) => setLabourRate(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Initial Status</label>
+                <select
+                  value={labourStatus}
+                  onChange={(e) => setLabourStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                >
+                  <option value="RECOMMENDED">RECOMMENDED (Requires Customer Approval)</option>
+                  <option value="APPROVED">APPROVED (Authorized for Billable Work)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddLabourModal(false)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
+                >
+                  Add Service Line
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Part Item Modal */}
+      {showAddPartModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3">
+              <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                <Package className="w-4 h-4 text-brand" /> Add Part / Material
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddPartModal(false)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPart} className="space-y-3.5 text-xs">
+              {partsCatalog.length > 0 && (
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Pick from Catalog (Optional)</label>
+                  <select
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                    onChange={(e) => {
+                      const sel = partsCatalog.find((c) => c.id === Number(e.target.value));
+                      if (sel) {
+                        setPartDesc(sel.name);
+                        setPartNumber(sel.part_number || '');
+                        setPartUnit(sel.unit || 'pcs');
+                        setPartPrice(sel.default_price / 100);
+                        setPartCatalogId(sel.id);
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="">-- Choose from catalog parts --</option>
+                    {partsCatalog.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.part_number ? `(${c.part_number})` : ''} - {formatINR(c.default_price)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Part Name / Description *</label>
+                <input
+                  type="text"
+                  required
+                  value={partDesc}
+                  onChange={(e) => setPartDesc(e.target.value)}
+                  placeholder="e.g. Engine Oil, Brake Pad Set"
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Part Number (Optional)</label>
+                  <input
+                    type="text"
+                    value={partNumber}
+                    onChange={(e) => setPartNumber(e.target.value)}
+                    placeholder="e.g. 5W30-SYN"
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Unit</label>
+                  <select
+                    value={partUnit}
+                    onChange={(e) => setPartUnit(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="pcs">pcs</option>
+                    <option value="litre">litre</option>
+                    <option value="set">set</option>
+                    <option value="can">can</option>
+                    <option value="box">box</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.1"
+                    required
+                    value={partQty}
+                    onChange={(e) => setPartQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Unit Price (₹) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    required
+                    value={partPrice}
+                    onChange={(e) => setPartPrice(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Initial Status</label>
+                <select
+                  value={partStatus}
+                  onChange={(e) => setPartStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                >
+                  <option value="RECOMMENDED">RECOMMENDED (Requires Customer Approval)</option>
+                  <option value="APPROVED">APPROVED (Authorized for Billable Work)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPartModal(false)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
+                >
+                  Add Part Item
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Decisions & Approvals Modal */}
+      {showApprovalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-lg w-full space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3 shrink-0">
+              <div>
+                <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-brand" /> Customer Approval Decisions
+                </h3>
+                <p className="text-[11px] text-workshop-muted">
+                  Check items customer approved; uncheck items customer decided to exclude.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowApprovalModal(false)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordApprovalSubmit} className="space-y-4 overflow-y-auto flex-1 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Customer / Decision Maker *</label>
+                  <input
+                    type="text"
+                    required
+                    value={approvalName}
+                    onChange={(e) => setApprovalName(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Approval Channel</label>
+                  <select
+                    value={approvalMethod}
+                    onChange={(e) => setApprovalMethod(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="WHATSAPP">WhatsApp Message</option>
+                    <option value="PHONE">Phone Call</option>
+                    <option value="IN_PERSON">In Person / Workshop Counter</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Items checklist */}
+              <div className="space-y-3">
+                <div>
+                  <span className="font-bold text-workshop-muted uppercase tracking-wider block mb-1 text-[11px]">
+                    Labour / Services
+                  </span>
+                  <div className="space-y-1.5 bg-gray-50 p-2.5 rounded-lg border border-workshop-border">
+                    {data.labour_items?.map((l: any) => {
+                      const isChecked = !!approvalsMap[`l_${l.id}`];
+                      return (
+                        <label
+                          key={l.id}
+                          className={`flex items-center justify-between p-2 rounded-md border cursor-pointer transition ${
+                            isChecked
+                              ? 'bg-green-50/60 border-green-300 text-green-950 font-medium'
+                              : 'bg-red-50/40 border-red-200 text-red-900 line-through opacity-70'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) =>
+                                setApprovalsMap({
+                                  ...approvalsMap,
+                                  [`l_${l.id}`]: e.target.checked,
+                                })
+                              }
+                              className="rounded text-brand focus:ring-brand"
+                            />
+                            <span>{l.description}</span>
+                          </div>
+                          <span className="font-mono font-bold">{formatINR(l.total)}</span>
+                        </label>
+                      );
+                    })}
+                    {(!data.labour_items || data.labour_items.length === 0) && (
+                      <div className="text-gray-400 italic py-1">No labour items.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="font-bold text-workshop-muted uppercase tracking-wider block mb-1 text-[11px]">
+                    Parts / Materials
+                  </span>
+                  <div className="space-y-1.5 bg-gray-50 p-2.5 rounded-lg border border-workshop-border">
+                    {data.parts_items?.map((p: any) => {
+                      const isChecked = !!approvalsMap[`p_${p.id}`];
+                      return (
+                        <label
+                          key={p.id}
+                          className={`flex items-center justify-between p-2 rounded-md border cursor-pointer transition ${
+                            isChecked
+                              ? 'bg-green-50/60 border-green-300 text-green-950 font-medium'
+                              : 'bg-red-50/40 border-red-200 text-red-900 line-through opacity-70'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) =>
+                                setApprovalsMap({
+                                  ...approvalsMap,
+                                  [`p_${p.id}`]: e.target.checked,
+                                })
+                              }
+                              className="rounded text-brand focus:ring-brand"
+                            />
+                            <span>{p.description} {p.part_number && `(${p.part_number})`}</span>
+                          </div>
+                          <span className="font-mono font-bold">{formatINR(p.total)}</span>
+                        </label>
+                      );
+                    })}
+                    {(!data.parts_items || data.parts_items.length === 0) && (
+                      <div className="text-gray-400 italic py-1">No parts items.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Approval Note (Optional)</label>
+                <input
+                  type="text"
+                  value={approvalNote}
+                  onChange={(e) => setApprovalNote(e.target.value)}
+                  placeholder="e.g. Customer approved engine oil and filter, asked to skip AC servicing for now"
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowApprovalModal(false)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
+                >
+                  Save Decisions &amp; Recalculate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
