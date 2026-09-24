@@ -23,6 +23,9 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onInvoiceUpdated?: () => void;
+  onNavigateToJobCard?: (jobCardId: number) => void;
+  onNavigateToCustomer?: (customerId: number) => void;
+  onNavigateToVehicle?: (vehicleId: number) => void;
 }
 
 export const InvoiceDetailModal: React.FC<Props> = ({
@@ -30,6 +33,9 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   isOpen,
   onClose,
   onInvoiceUpdated,
+  onNavigateToJobCard,
+  onNavigateToCustomer,
+  onNavigateToVehicle,
 }) => {
   const { user, workshop } = useAuth();
   const [data, setData] = useState<any>(null);
@@ -283,15 +289,60 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                 </div>
                 <div className="text-right">
                   <div className="text-workshop-muted">Job Card No:</div>
-                  <div className="font-mono font-bold text-sm text-workshop-text">{data.job_card_number}</div>
+                  {onNavigateToJobCard && data.job_card_id ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onNavigateToJobCard(data.job_card_id);
+                      }}
+                      className="font-mono font-bold text-sm text-brand hover:text-brand-deep underline cursor-pointer inline-flex items-center gap-1 justify-end"
+                      title="Jump to Job Card"
+                    >
+                      <span>{data.job_card_number}</span>
+                      <span>&rarr;</span>
+                    </button>
+                  ) : (
+                    <div className="font-mono font-bold text-sm text-workshop-text">{data.job_card_number}</div>
+                  )}
                 </div>
                 <div>
                   <div className="text-workshop-muted">Customer:</div>
-                  <div className="font-bold text-workshop-text">{data.customer?.name} ({data.customer?.phone})</div>
+                  {onNavigateToCustomer && data.customer?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onNavigateToCustomer(data.customer.id);
+                      }}
+                      className="font-bold text-workshop-text hover:text-brand underline text-left cursor-pointer inline-flex items-center gap-1"
+                      title="Jump to Customer Profile"
+                    >
+                      <span>{data.customer?.name} ({data.customer?.phone})</span>
+                      <span>&rarr;</span>
+                    </button>
+                  ) : (
+                    <div className="font-bold text-workshop-text">{data.customer?.name} ({data.customer?.phone})</div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-workshop-muted">Vehicle:</div>
-                  <div className="font-bold text-workshop-text">{data.vehicle?.make} {data.vehicle?.model} &bull; <span className="font-mono">{data.vehicle?.registration_number}</span></div>
+                  {onNavigateToVehicle && data.vehicle?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onNavigateToVehicle(data.vehicle.id);
+                      }}
+                      className="font-bold text-workshop-text hover:text-brand underline text-right cursor-pointer inline-flex items-center gap-1 justify-end"
+                      title="Jump to Vehicle History"
+                    >
+                      <span>{data.vehicle?.make} {data.vehicle?.model} &bull; <span className="font-mono">{data.vehicle?.registration_number}</span></span>
+                      <span>&rarr;</span>
+                    </button>
+                  ) : (
+                    <div className="font-bold text-workshop-text">{data.vehicle?.make} {data.vehicle?.model} &bull; <span className="font-mono">{data.vehicle?.registration_number}</span></div>
+                  )}
                 </div>
               </div>
 

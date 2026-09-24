@@ -8,6 +8,7 @@ interface Props {
   onBack: () => void;
   onNavigateToJobCard: (id: number) => void;
   onNavigateToVehicle: (id: number) => void;
+  onNavigateToInvoice?: (id: number) => void;
 }
 
 export const CustomerDetailPage: React.FC<Props> = ({
@@ -15,6 +16,7 @@ export const CustomerDetailPage: React.FC<Props> = ({
   onBack,
   onNavigateToJobCard,
   onNavigateToVehicle,
+  onNavigateToInvoice,
 }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +126,18 @@ export const CustomerDetailPage: React.FC<Props> = ({
                 <tr key={jc.id} onClick={() => onNavigateToJobCard(jc.id)} className="hover:bg-blue-50/40 cursor-pointer">
                   <td className="px-4 py-3 font-mono font-bold text-brand-deep">{jc.job_card_number}</td>
                   <td className="px-4 py-3 text-xs text-workshop-muted font-mono">{jc.date}</td>
-                  <td className="px-4 py-3 text-xs font-mono font-semibold">{jc.vehicle_reg} ({jc.vehicle_model})</td>
+                  <td
+                    className="px-4 py-3 text-xs font-mono font-semibold hover:text-brand hover:underline cursor-pointer"
+                    onClick={(e) => {
+                      if (onNavigateToVehicle && jc.vehicle_id) {
+                        e.stopPropagation();
+                        onNavigateToVehicle(jc.vehicle_id);
+                      }
+                    }}
+                    title="View Vehicle History"
+                  >
+                    {jc.vehicle_reg} ({jc.vehicle_model})
+                  </td>
                   <td className="px-4 py-3 text-xs">{jc.status}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-xs">
                     {jc.invoice ? (
@@ -136,7 +149,24 @@ export const CustomerDetailPage: React.FC<Props> = ({
                       </span>
                     ) : '-'}
                   </td>
-                  <td className="px-4 py-3 text-right text-xs font-semibold text-brand">View &rarr;</td>
+                  <td className="px-4 py-3 text-right text-xs font-semibold">
+                    <div className="flex items-center justify-end gap-2">
+                      {jc.invoice && onNavigateToInvoice && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigateToInvoice(jc.invoice.id);
+                          }}
+                          className="text-brand hover:underline cursor-pointer"
+                          title="View Invoice / Bill"
+                        >
+                          [View Bill]
+                        </button>
+                      )}
+                      <span className="text-brand">Job Card &rarr;</span>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}

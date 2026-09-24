@@ -90,8 +90,10 @@ def list_invoices(
             "invoice_number": inv.invoice_number,
             "job_card_id": jc.id if jc else None,
             "job_card_number": jc.job_card_number if jc else "",
+            "customer_id": jc.customer.id if (jc and jc.customer) else None,
             "customer_name": jc.customer.name if (jc and jc.customer) else "",
             "customer_phone": jc.customer.phone if (jc and jc.customer) else "",
+            "vehicle_id": jc.vehicle.id if (jc and jc.vehicle) else None,
             "vehicle_reg": jc.vehicle.registration_number if (jc and jc.vehicle) else "",
             "status": inv.status,
             "grand_total": inv.grand_total,
@@ -175,10 +177,12 @@ def get_invoice_detail(
         "job_card_id": jc.id if jc else None,
         "job_card_number": jc.job_card_number if jc else "",
         "customer": {
+            "id": jc.customer.id,
             "name": jc.customer.name,
             "phone": jc.customer.phone
         } if (jc and jc.customer) else None,
         "vehicle": {
+            "id": jc.vehicle.id,
             "registration_number": jc.vehicle.registration_number,
             "make": jc.vehicle.make,
             "model": jc.vehicle.model,

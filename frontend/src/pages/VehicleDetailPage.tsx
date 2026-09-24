@@ -8,6 +8,7 @@ interface Props {
   onBack: () => void;
   onNavigateToJobCard: (id: number) => void;
   onNavigateToInvoice: (id: number) => void;
+  onNavigateToCustomer?: (id: number) => void;
 }
 
 export const VehicleDetailPage: React.FC<Props> = ({
@@ -15,6 +16,7 @@ export const VehicleDetailPage: React.FC<Props> = ({
   onBack,
   onNavigateToJobCard,
   onNavigateToInvoice,
+  onNavigateToCustomer,
 }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -59,7 +61,21 @@ export const VehicleDetailPage: React.FC<Props> = ({
             </h2>
           </div>
           <div className="text-xs text-workshop-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>Owner: <span className="font-semibold text-workshop-text">{owner?.name}</span> ({owner?.phone})</span>
+            <span>
+              Owner:{' '}
+              {onNavigateToCustomer && owner?.id ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigateToCustomer(owner.id)}
+                  className="font-semibold text-brand hover:underline cursor-pointer"
+                  title="View Owner Profile"
+                >
+                  {owner?.name} ({owner?.phone}) &rarr;
+                </button>
+              ) : (
+                <span className="font-semibold text-workshop-text">{owner?.name} ({owner?.phone})</span>
+              )}
+            </span>
             <span>&bull;</span>
             <span>Fuel: <span className="font-semibold text-workshop-text">{vehicle.fuel_type}</span></span>
             {vehicle.year && <><span>&bull;</span><span>Year: <span className="font-semibold text-workshop-text">{vehicle.year}</span></span></>}

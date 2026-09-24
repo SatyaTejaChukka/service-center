@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Receipt, ArrowRight, Printer, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Receipt, ArrowRight, Printer, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR } from '../lib/formatters';
 import { InvoiceDetailModal } from '../components/invoice/InvoiceDetailModal';
@@ -9,8 +9,10 @@ interface InvoiceListItem {
   invoice_number: string | null;
   job_card_id: number;
   job_card_number: string;
+  customer_id?: number | null;
   customer_name: string;
   customer_phone: string;
+  vehicle_id?: number | null;
   vehicle_reg: string;
   status: string;
   grand_total: number;
@@ -20,13 +22,37 @@ interface InvoiceListItem {
   finalized_at: string | null;
 }
 
-export const InvoicesPage: React.FC = () => {
+interface InvoicesPageProps {
+  initialInvoiceId?: number | null;
+  onClearInitialInvoiceId?: () => void;
+  onNavigateToJobCard?: (jobCardId: number) => void;
+  onNavigateToCustomer?: (customerId: number) => void;
+  onNavigateToVehicle?: (vehicleId: number) => void;
+  onBack?: () => void;
+  backLabel?: string;
+}
+
+export const InvoicesPage: React.FC<InvoicesPageProps> = ({
+  initialInvoiceId,
+  onClearInitialInvoiceId,
+  onNavigateToJobCard,
+  onNavigateToCustomer,
+  onNavigateToVehicle,
+  onBack,
+  backLabel,
+}) => {
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [search, setSearch] = useState('');
 
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(initialInvoiceId ?? null);
+
+  useEffect(() => {
+    if (initialInvoiceId) {
+      setSelectedInvoiceId(initialInvoiceId);
+    }
+  }, [initialInvoiceId]);
 
   const fetchInvoices = async () => {
     try {
@@ -60,13 +86,24 @@ export const InvoicesPage: React.FC = () => {
     <div className="p-4 md:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       
       {/* Page Header */}
-      <div>
-        <h2 className="font-display font-bold text-2xl md:text-3xl text-workshop-text tracking-tight">
-          Invoices &amp; Billing
-        </h2>
-        <p className="text-sm text-workshop-muted">
-          Manage final service bills, payments, receipts, and receivables.
-        </p>
+      <div className="flex items-center gap-3">
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-gray-100 rounded-lg text-workshop-muted hover:text-workshop-text transition border border-workshop-border shrink-0 cursor-pointer shadow-2xs"
+            title={backLabel || 'Go Back'}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
+        <div>
+          <h2 className="font-display font-bold text-2xl md:text-3xl text-workshop-text tracking-tight">
+            Invoices &amp; Billing
+          </h2>
+          <p className="text-sm text-workshop-muted">
+            Manage final service bills, payments, receipts, and receivables.
+          </p>
+        </div>
       </div>
 
       {/* Filter Tabs & Search Bar */}
@@ -147,12 +184,43 @@ export const InvoicesPage: React.FC = () => {
                     <td className="px-4 py-3 font-mono font-bold text-brand-deep">
                       {inv.invoice_number || <span className="text-workshop-muted italic">DRAFT</span>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-workshop-muted">
+                    <td
+                      className="px-4 py-3 font-mono text-xs text-workshop-muted hover:text-brand hover:underline cursor-pointer"
+                      onClick={(e) => {
+                        if (onNavigateToJobCard && inv.job_card_id) {
+                          e.stopPropagation();
+                          onNavigateToJobCard(inv.job_card_id);
+                        }
+                      }}
+                      title="Jump to Job Card"
+                    >
                       {inv.job_card_number}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-workshop-text text-xs">{inv.customer_name}</div>
-                      <div className="font-mono text-xs text-workshop-muted">{inv.vehicle_reg}</div>
+                      <div
+                        className="font-semibold text-workshop-text text-xs hover:text-brand hover:underline cursor-pointer"
+                        onClick={(e) => {
+                          if (onNavigateToCustomer && inv.customer_id) {
+                            e.stopPropagation();
+                            onNavigateToCustomer(inv.customer_id);
+                          }
+                        }}
+                        title="Jump to Customer Profile"
+                      >
+                        {inv.customer_name}
+                      </div>
+                      <div
+                        className="font-mono text-xs text-workshop-muted hover:text-brand hover:underline cursor-pointer"
+                        onClick={(e) => {
+                          if (onNavigateToVehicle && inv.vehicle_id) {
+                            e.stopPropagation();
+                            onNavigateToVehicle(inv.vehicle_id);
+                          }
+                        }}
+                        title="Jump to Vehicle History"
+                      >
+                        {inv.vehicle_reg}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -209,8 +277,14 @@ export const InvoicesPage: React.FC = () => {
         <InvoiceDetailModal
           invoiceId={selectedInvoiceId}
           isOpen={true}
-          onClose={() => setSelectedInvoiceId(null)}
+          onClose={() => {
+            setSelectedInvoiceId(null);
+            if (onClearInitialInvoiceId) onClearInitialInvoiceId();
+          }}
           onInvoiceUpdated={fetchInvoices}
+          onNavigateToJobCard={onNavigateToJobCard}
+          onNavigateToCustomer={onNavigateToCustomer}
+          onNavigateToVehicle={onNavigateToVehicle}
         />
       )}
 

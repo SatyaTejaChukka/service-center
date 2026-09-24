@@ -32,21 +32,32 @@ import {
   buildJobCardIntakeMessage
 } from '../lib/whatsapp';
 
+import { InvoiceDetailModal } from '../components/invoice/InvoiceDetailModal';
+
 interface Props {
   jobCardId: number;
   onBack: () => void;
   onNavigateToInvoice: (invoiceId: number) => void;
+  onNavigateToCustomer?: (customerId: number) => void;
+  onNavigateToVehicle?: (vehicleId: number) => void;
+  backLabel?: string;
 }
 
 export const JobCardDetailPage: React.FC<Props> = ({
   jobCardId,
   onBack,
   onNavigateToInvoice,
+  onNavigateToCustomer,
+  onNavigateToVehicle,
+  backLabel,
 }) => {
   const { user, workshop } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // In-place invoice modal state
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   // Catalogs
   const [labourCatalog, setLabourCatalog] = useState<any[]>([]);
@@ -394,8 +405,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
         <div className="flex items-start sm:items-center gap-3">
           <button
             onClick={onBack}
-            className="p-2 hover:bg-gray-100 rounded-lg text-workshop-muted hover:text-workshop-text transition border border-workshop-border/80 shrink-0 mt-0.5 sm:mt-0"
-            title="Back to Job Cards"
+            className="p-2 hover:bg-gray-100 rounded-lg text-workshop-muted hover:text-workshop-text transition border border-workshop-border/80 shrink-0 mt-0.5 sm:mt-0 cursor-pointer"
+            title={backLabel || "Back to Job Cards"}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -527,7 +538,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
           {data.invoice && (
             <button
               type="button"
-              onClick={() => onNavigateToInvoice(data.invoice.id)}
+              onClick={() => setShowInvoiceModal(true)}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand hover:bg-brand-deep text-white font-bold text-xs rounded-lg shadow-sm transition cursor-pointer"
             >
               <Receipt className="w-3.5 h-3.5" />
@@ -542,10 +553,27 @@ export const JobCardDetailPage: React.FC<Props> = ({
         
         {/* Customer Card */}
         <div className="p-4 bg-white rounded-xl border border-workshop-border shadow-2xs space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-workshop-muted uppercase tracking-wider">
-            <User className="w-3.5 h-3.5 text-brand" /> Customer Information
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-workshop-muted uppercase tracking-wider">
+              <User className="w-3.5 h-3.5 text-brand" /> Customer Information
+            </div>
+            {onNavigateToCustomer && data.customer?.id && (
+              <button
+                type="button"
+                onClick={() => onNavigateToCustomer(data.customer.id)}
+                className="text-xs font-semibold text-brand hover:underline cursor-pointer"
+                title="View Customer Profile"
+              >
+                Profile &rarr;
+              </button>
+            )}
           </div>
-          <div className="font-bold text-base text-workshop-text">{data.customer.name}</div>
+          <div
+            className={`font-bold text-base text-workshop-text ${onNavigateToCustomer && data.customer?.id ? 'hover:text-brand cursor-pointer' : ''}`}
+            onClick={() => onNavigateToCustomer && data.customer?.id && onNavigateToCustomer(data.customer.id)}
+          >
+            {data.customer.name}
+          </div>
           <div className="text-xs text-workshop-muted space-y-1">
             <div>Phone: <span className="font-mono font-semibold text-workshop-text">{data.customer.phone}</span></div>
             {data.customer.alt_phone && <div>Alt Phone: <span className="font-mono">{data.customer.alt_phone}</span></div>}
@@ -556,14 +584,29 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
         {/* Vehicle Card */}
         <div className="p-4 bg-white rounded-xl border border-workshop-border shadow-2xs space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-workshop-muted uppercase tracking-wider">
-            <Car className="w-3.5 h-3.5 text-brand" /> Vehicle Details
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-workshop-muted uppercase tracking-wider">
+              <Car className="w-3.5 h-3.5 text-brand" /> Vehicle Details
+            </div>
+            {onNavigateToVehicle && data.vehicle?.id && (
+              <button
+                type="button"
+                onClick={() => onNavigateToVehicle(data.vehicle.id)}
+                className="text-xs font-semibold text-brand hover:underline cursor-pointer"
+                title="View Vehicle History"
+              >
+                History &rarr;
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-base bg-gray-100 px-2.5 py-0.5 rounded border border-gray-300">
+          <div
+            className={`flex items-center gap-2 ${onNavigateToVehicle && data.vehicle?.id ? 'cursor-pointer group' : ''}`}
+            onClick={() => onNavigateToVehicle && data.vehicle?.id && onNavigateToVehicle(data.vehicle.id)}
+          >
+            <span className="font-mono font-bold text-base bg-gray-100 px-2.5 py-0.5 rounded border border-gray-300 group-hover:border-brand transition">
               {data.vehicle.registration_number}
             </span>
-            <span className="font-bold text-base text-workshop-text">
+            <span className="font-bold text-base text-workshop-text group-hover:text-brand transition">
               {data.vehicle.make} {data.vehicle.model} {data.vehicle.variant && <span className="text-sm font-normal text-workshop-muted">({data.vehicle.variant})</span>}
             </span>
           </div>
@@ -1532,6 +1575,22 @@ export const JobCardDetailPage: React.FC<Props> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* In-place Invoice Detail Modal */}
+      {data?.invoice && showInvoiceModal && (
+        <InvoiceDetailModal
+          invoiceId={data.invoice.id}
+          isOpen={showInvoiceModal}
+          onClose={() => {
+            setShowInvoiceModal(false);
+            fetchDetail();
+          }}
+          onInvoiceUpdated={fetchDetail}
+          onNavigateToJobCard={() => setShowInvoiceModal(false)}
+          onNavigateToCustomer={onNavigateToCustomer}
+          onNavigateToVehicle={onNavigateToVehicle}
+        />
       )}
     </div>
   );
