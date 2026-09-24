@@ -153,3 +153,44 @@ def transfer_vehicle_ownership(
     record_audit(db, current_user.id, "VEHICLE_TRANSFER", "vehicle", str(veh.id), {"old_customer_id": old_owner_id}, {"new_customer_id": new_customer_id})
     db.commit()
     return {"message": "Ownership transferred successfully"}
+
+@router.put("/{vehicle_id}", response_model=VehicleResponse)
+def update_vehicle(
+    vehicle_id: int,
+    req: VehicleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    veh = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not veh:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    old_data = {
+        "make": veh.make,
+        "model": veh.model,
+        "odometer": veh.current_odometer
+    }
+
+    if req.make is not None:
+        veh.make = req.make.strip()
+    if req.model is not None:
+        veh.model = req.model.strip()
+    if req.variant is not None:
+        veh.variant = req.variant.strip() if req.variant else None
+    if req.fuel_type is not None:
+        veh.fuel_type = req.fuel_type
+    if req.vin is not None:
+        veh.vin = req.vin.strip().upper() if req.vin else None
+    if req.engine_number is not None:
+        veh.engine_number = req.engine_number.strip().upper() if req.engine_number else None
+    if req.year is not None:
+        veh.year = req.year
+    if req.colour is not None:
+        veh.colour = req.colour.strip() if req.colour else None
+    if req.current_odometer is not None:
+        veh.current_odometer = req.current_odometer
+
+    record_audit(db, current_user.id, "VEHICLE_UPDATE", "vehicle", str(veh.id), old_data, {"make": veh.make, "model": veh.model, "odometer": veh.current_odometer})
+    db.commit()
+    db.refresh(veh)
+    return veh
