@@ -13,6 +13,9 @@ def test_benchmark_indexed_search():
     """
     db = SessionLocal()
     try:
+        # Warm up connection pool & SQLite cache
+        global_search(db, query="warmup", limit_per_category=1)
+
         # Measure search latency on active database
         start = time.perf_counter()
         results = global_search(db, query="AP31", limit_per_category=10)

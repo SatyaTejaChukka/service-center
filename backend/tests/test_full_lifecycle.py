@@ -158,6 +158,38 @@ def test_full_workshop_lifecycle():
         assert res_paid_inv.json()["payment_status"] == "PAID"
         assert res_paid_inv.json()["balance_due"] == 0
 
+        # Verify finalized invoice locks line item modification
+        res_lock = client.post(f"/api/v1/job-cards/{jc_id}/labour-items", json={
+            "description": "Extra Labour", "quantity": 1, "unit_price": 50000, "status": "APPROVED"
+        }, headers=headers)
+        assert res_lock.status_code == 400
+        assert "finalised" in res_lock.json()["detail"].lower()
+
+        # Test Vehicle Update PUT endpoint
+        res_v_up = client.put(f"/api/v1/vehicles/{veh_id}", json={
+            "colour": "Polar White", "current_odometer": 45300
+        }, headers=headers)
+        assert res_v_up.status_code == 200
+        assert res_v_up.json()["colour"] == "Polar White"
+        assert res_v_up.json()["current_odometer"] == 45300
+
+        # Test Payment Reversal endpoint
+        pay_id = pay_res.json()["id"]
+        rev_res = client.post(f"/api/v1/invoices/{inv_id}/payments/{pay_id}/reverse", json={"reason": "Mistaken entry"}, headers=headers)
+        assert rev_res.status_code == 200
+        assert rev_res.json()["is_reversal"] == True
+        
+        # Verify invoice payment_status is back to UNPAID
+        res_rev_inv = client.get(f"/api/v1/invoices/{inv_id}", headers=headers)
+        assert res_rev_inv.json()["payment_status"] == "UNPAID"
+        assert res_rev_inv.json()["balance_due"] == 740000
+
+        # Settle invoice again with Cash
+        repay_res = client.post(f"/api/v1/invoices/{inv_id}/payments", json={
+            "amount": 740000, "method": "CASH", "reference": "REC-001"
+        }, headers=headers)
+        assert repay_res.status_code == 200
+
         # 13. Complete Job Card
         res_status = client.post(f"/api/v1/job-cards/{jc_id}/status", json={"status": "COMPLETED"}, headers=headers)
         assert res_status.status_code == 200
