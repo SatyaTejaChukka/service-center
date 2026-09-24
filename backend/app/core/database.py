@@ -3,20 +3,21 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import settings
 from app.models import Base
 
-# SQLite engine with thread check disabled for single-host FastAPI concurrency
+# SQLite engine with thread check disabled and busy timeout for reliable local concurrency
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 15},
     pool_pre_ping=True
 )
 
-# Enable WAL mode, synchronous=NORMAL, and foreign key enforcement on SQLite
+# Enable WAL mode, synchronous=NORMAL, foreign keys, and busy timeout on SQLite
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL;")
     cursor.execute("PRAGMA synchronous=NORMAL;")
     cursor.execute("PRAGMA foreign_keys=ON;")
+    cursor.execute("PRAGMA busy_timeout=15000;")
     cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
