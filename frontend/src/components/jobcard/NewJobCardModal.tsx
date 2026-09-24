@@ -13,11 +13,14 @@ import {
   Printer,
   Clock,
   CalendarClock,
-  Notebook
+  Notebook,
+  MessageCircle
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../../lib/api';
 import { formatINR } from '../../lib/formatters';
 import { useAuth } from '../../context/AuthContext';
+import { WhatsAppPreviewModal } from '../common/WhatsAppPreviewModal';
+import { buildJobCardIntakeMessage } from '../../lib/whatsapp';
 
 interface Props {
   isOpen: boolean;
@@ -43,10 +46,14 @@ const STANDARD_CATEGORIES = [
 ];
 
 export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCreated }) => {
-  const { user } = useAuth();
+  const { user, workshop } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // WhatsApp gatepass state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
 
   // Catalogs
   const [labourCatalog, setLabourCatalog] = useState<Array<{ id: number; name: string; default_rate: number }>>([]);
@@ -331,18 +338,24 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   // Calculate live preview total based on approvals
   const calculatePreviewTotals = () => {
     let partsTotal = 0;
+    let estimatedPartsTotal = 0;
     partLines.forEach((p, idx) => {
-      const isApproved = approvals[`part_${idx}`] === 'APPROVED';
-      if (isApproved) {
-        partsTotal += Math.round(p.quantity * p.unit_price);
+      const lineTot = Math.round(p.quantity * p.unit_price);
+      estimatedPartsTotal += lineTot;
+      const appr = approvals[`part_${idx}`];
+      if (appr === 'APPROVED' || (!appr && step <= 4)) {
+        partsTotal += lineTot;
       }
     });
 
     let labourTotal = 0;
+    let estimatedLabourTotal = 0;
     labourLines.forEach((l, idx) => {
-      const isApproved = approvals[`labour_${idx}`] === 'APPROVED';
-      if (isApproved) {
-        labourTotal += Math.round(l.quantity * l.unit_price);
+      const lineTot = Math.round(l.quantity * l.unit_price);
+      estimatedLabourTotal += lineTot;
+      const appr = approvals[`labour_${idx}`];
+      if (appr === 'APPROVED' || (!appr && step <= 4)) {
+        labourTotal += lineTot;
       }
     });
 
@@ -351,7 +364,16 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
     const subtotal = partsTotal + labourTotal + otherCharges;
     const grandTotal = Math.max(0, subtotal - discount);
 
-    return { partsTotal, labourTotal, otherCharges, discount, grandTotal };
+    return {
+      partsTotal,
+      labourTotal,
+      otherCharges,
+      discount,
+      grandTotal,
+      estimatedPartsTotal,
+      estimatedLabourTotal,
+      estimatedGrandTotal: estimatedPartsTotal + estimatedLabourTotal
+    };
   };
 
   // Submit and create full Job Card
@@ -1260,6 +1282,17 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 >
                   <Plus className="w-3.5 h-3.5" /> + Add Custom Part
                 </button>
+
+                {/* Step 4 Live Running Estimate */}
+                <div className="p-3 bg-gray-50 border border-workshop-border rounded-xl flex items-center justify-between text-xs mt-3">
+                  <span className="text-workshop-muted">
+                    Total Work Added: <span className="font-semibold text-workshop-text">{labourLines.length} labour lines, {partLines.length} parts</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-workshop-muted font-medium">Estimated Work Total:</span>
+                    <span className="font-mono font-bold text-base text-brand-deep">{formatINR(totals.estimatedGrandTotal)}</span>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -1402,23 +1435,33 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
               {/* Live Preview Summary Card */}
               <div className="p-4 bg-gray-50 border border-workshop-border rounded-xl space-y-2">
                 <div className="flex justify-between text-xs text-workshop-muted">
-                  <span>Parts Total (Approved items only):</span>
+                  <span>Parts Total (Approved):</span>
                   <span className="font-mono">{formatINR(totals.partsTotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-workshop-muted">
-                  <span>Labour Total (Approved items only):</span>
+                  <span>Labour Total (Approved):</span>
                   <span className="font-mono">{formatINR(totals.labourTotal)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-workshop-muted">
-                  <span>Consumables / Other Charges:</span>
-                  <span className="font-mono">{formatINR(totals.otherCharges)}</span>
-                </div>
-                <div className="flex justify-between text-xs text-workshop-muted">
-                  <span>Discount:</span>
-                  <span className="font-mono text-workshop-red">-{formatINR(totals.discount)}</span>
-                </div>
+                {totals.otherCharges > 0 && (
+                  <div className="flex justify-between text-xs text-workshop-muted">
+                    <span>Consumables / Other Charges:</span>
+                    <span className="font-mono">{formatINR(totals.otherCharges)}</span>
+                  </div>
+                )}
+                {totals.discount > 0 && (
+                  <div className="flex justify-between text-xs text-workshop-muted">
+                    <span>Discount:</span>
+                    <span className="font-mono text-workshop-red">-{formatINR(totals.discount)}</span>
+                  </div>
+                )}
+                {totals.estimatedGrandTotal !== totals.grandTotal && (
+                  <div className="flex justify-between text-xs text-workshop-muted pt-1 border-t border-gray-200">
+                    <span>Original Quoted Work:</span>
+                    <span className="font-mono">{formatINR(totals.estimatedGrandTotal)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold text-workshop-text border-t border-workshop-border pt-2">
-                  <span>Estimated Total:</span>
+                  <span>Approved Billable Total:</span>
                   <span className="font-mono text-brand-deep text-lg">{formatINR(totals.grandTotal)}</span>
                 </div>
               </div>
@@ -1476,10 +1519,31 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                   <Printer className="w-4 h-4" /> Print Job Card PDF
                 </a>
                 <button
+                  type="button"
+                  onClick={() => {
+                    const msg = buildJobCardIntakeMessage({
+                      customerName: createdJobCard.customer.name,
+                      vehicleReg: createdJobCard.vehicle.registration_number,
+                      vehicleModel: `${createdJobCard.vehicle.make || ''} ${createdJobCard.vehicle.model || ''}`.trim(),
+                      jobCardNo: createdJobCard.job_card_number,
+                      date: createdJobCard.date || new Date().toLocaleDateString('en-IN'),
+                      odometer: createdJobCard.odometer,
+                      fuelLevel: createdJobCard.fuel_level,
+                      complaints: complaints.filter(Boolean),
+                      workshop
+                    });
+                    setWhatsAppMessage(msg);
+                    setShowWhatsAppModal(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#1DA851] text-white text-sm font-bold rounded-lg transition cursor-pointer shadow-md"
+                >
+                  <MessageCircle className="w-4 h-4 fill-white" /> Send WhatsApp Gatepass
+                </button>
+                <button
                   onClick={() => {
                     onClose();
                   }}
-                  className="px-5 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-semibold rounded-lg transition"
+                  className="px-5 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-semibold rounded-lg transition cursor-pointer"
                 >
                   Go to Job Card Details
                 </button>
@@ -1563,6 +1627,19 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
             </div>
           </div>
         </div>
+      )}
+
+      {/* WhatsApp Gatepass Modal */}
+      {createdJobCard && (
+        <WhatsAppPreviewModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          title="Send Intake Gatepass on WhatsApp"
+          customerName={createdJobCard.customer.name}
+          customerPhone={createdJobCard.customer.phone}
+          altPhone={createdJobCard.customer.alt_phone}
+          initialMessage={whatsAppMessage}
+        />
       )}
 
     </div>
