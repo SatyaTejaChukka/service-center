@@ -149,7 +149,8 @@ def generate_invoice_pdf(
     if w_gstin:
         header_info += f" &bull; GSTIN: {w_gstin}"
     story.append(Paragraph(header_info, subtitle_style))
-    story.append(Paragraph("<b>TAX INVOICE / SERVICE BILL</b>", subtitle_style))
+    doc_title = "TAX INVOICE / SERVICE BILL" if invoice.status == "FINALIZED" else ("VOID INVOICE" if invoice.status == "VOID" else "ESTIMATE / SERVICE QUOTATION")
+    story.append(Paragraph(f"<b>{doc_title}</b>", subtitle_style))
     story.append(Spacer(1, 10))
 
     # 2. Meta Grid (Invoice #, Date, Customer, Vehicle)
@@ -159,12 +160,12 @@ def generate_invoice_pdf(
 
     meta_data = [
         [
-            Paragraph(f"<b>Invoice No:</b> {invoice.invoice_number or 'DRAFT'}", normal_style),
+            Paragraph(f"<b>{'Invoice No:' if invoice.status == 'FINALIZED' else 'Document:'}</b> {invoice.invoice_number or 'DRAFT ESTIMATE'}", normal_style),
             Paragraph(f"<b>Date:</b> {format_date(invoice.finalized_at or invoice.created_at)}", right_style)
         ],
         [
             Paragraph(f"<b>Job Card:</b> {jc.job_card_number if jc else ''}", normal_style),
-            Paragraph(f"<b>Payment Status:</b> {invoice.payment_status}", right_bold)
+            Paragraph(f"<b>Status:</b> {invoice.status}", right_bold)
         ],
         [
             Paragraph(f"<b>Customer:</b> {cust.name if cust else ''} &bull; {cust.phone if cust else ''}", normal_style),
@@ -185,23 +186,35 @@ def generate_invoice_pdf(
     story.append(meta_table)
     story.append(Spacer(1, 12))
 
-    # 3. Parts Table (Approved / Used only)
-    approved_parts = [p for p in jc.parts_items if p.status in ("APPROVED", "USED")] if jc else []
-    if approved_parts:
-        story.append(Paragraph("<b>PARTS / MATERIALS</b>", bold_style))
+    # 3. Parts Table (Approved only if finalized, active non-rejected if draft)
+    if invoice.status == "FINALIZED":
+        active_parts = [p for p in jc.parts_items if p.status in ("APPROVED", "USED")] if jc else []
+    else:
+        active_parts = [p for p in jc.parts_items if p.status != "REJECTED"] if jc else []
+
+    if active_parts:
+        parts_header = "PARTS / MATERIALS" if invoice.status == "FINALIZED" else "ESTIMATED PARTS / MATERIALS"
+        story.append(Paragraph(f"<b>{parts_header}</b>", bold_style))
         parts_data = [
             [Paragraph("<b>#</b>", bold_style), Paragraph("<b>Description</b>", bold_style), Paragraph("<b>Qty</b>", right_bold), Paragraph("<b>Rate</b>", right_bold), Paragraph("<b>Amount</b>", right_bold)]
         ]
-        for idx, p in enumerate(approved_parts, start=1):
+        for idx, p in enumerate(active_parts, start=1):
+            desc = p.description
+            if p.part_number:
+                desc += f" ({p.part_number})"
+            if invoice.status == "DRAFT" and p.status == "RECOMMENDED":
+                desc += " <i>[Recommended]</i>"
+
             parts_data.append([
                 Paragraph(str(idx), normal_style),
-                Paragraph(f"{p.description}{f' ({p.part_number})' if p.part_number else ''}", normal_style),
+                Paragraph(desc, normal_style),
                 Paragraph(f"{p.quantity:g} {p.unit}", right_style),
                 Paragraph(format_inr(p.unit_price), right_style),
                 Paragraph(format_inr(p.total), right_style)
             ])
+        parts_label = "Parts Total" if invoice.status == "FINALIZED" else "Parts Estimate"
         parts_data.append([
-            "", Paragraph("<b>Parts Total</b>", bold_style), "", "", Paragraph(format_inr(invoice.parts_total), right_bold)
+            "", Paragraph(f"<b>{parts_label}</b>", bold_style), "", "", Paragraph(format_inr(invoice.parts_total), right_bold)
         ])
         
         parts_table = Table(parts_data, colWidths=[8 * mm, 82 * mm, 25 * mm, 30 * mm, 35 * mm])
@@ -215,23 +228,33 @@ def generate_invoice_pdf(
         story.append(parts_table)
         story.append(Spacer(1, 10))
 
-    # 4. Labour Table (Approved / Done only)
-    approved_labour = [l for l in jc.labour_items if l.status in ("APPROVED", "DONE")] if jc else []
-    if approved_labour:
-        story.append(Paragraph("<b>LABOUR & SERVICES</b>", bold_style))
+    # 4. Labour Table (Approved only if finalized, active non-rejected if draft)
+    if invoice.status == "FINALIZED":
+        active_labour = [l for l in jc.labour_items if l.status in ("APPROVED", "DONE")] if jc else []
+    else:
+        active_labour = [l for l in jc.labour_items if l.status != "REJECTED"] if jc else []
+
+    if active_labour:
+        labour_header = "LABOUR & SERVICES" if invoice.status == "FINALIZED" else "ESTIMATED LABOUR & SERVICES"
+        story.append(Paragraph(f"<b>{labour_header}</b>", bold_style))
         labour_data = [
             [Paragraph("<b>#</b>", bold_style), Paragraph("<b>Description</b>", bold_style), Paragraph("<b>Qty</b>", right_bold), Paragraph("<b>Rate</b>", right_bold), Paragraph("<b>Amount</b>", right_bold)]
         ]
-        for idx, l in enumerate(approved_labour, start=1):
+        for idx, l in enumerate(active_labour, start=1):
+            desc = l.description
+            if invoice.status == "DRAFT" and l.status == "RECOMMENDED":
+                desc += " <i>[Recommended]</i>"
+
             labour_data.append([
                 Paragraph(str(idx), normal_style),
-                Paragraph(l.description, normal_style),
+                Paragraph(desc, normal_style),
                 Paragraph(f"{l.quantity:g}", right_style),
                 Paragraph(format_inr(l.unit_price), right_style),
                 Paragraph(format_inr(l.total), right_style)
             ])
+        labour_label = "Labour Total" if invoice.status == "FINALIZED" else "Labour Estimate"
         labour_data.append([
-            "", Paragraph("<b>Labour Total</b>", bold_style), "", "", Paragraph(format_inr(invoice.labour_total), right_bold)
+            "", Paragraph(f"<b>{labour_label}</b>", bold_style), "", "", Paragraph(format_inr(invoice.labour_total), right_bold)
         ])
         
         labour_table = Table(labour_data, colWidths=[8 * mm, 82 * mm, 25 * mm, 30 * mm, 35 * mm])
@@ -247,8 +270,8 @@ def generate_invoice_pdf(
 
     # 5. Other Charges, Discount, and Totals
     summary_rows = [
-        [Paragraph("Parts Total:", normal_style), Paragraph(format_inr(invoice.parts_total), right_style)],
-        [Paragraph("Labour Total:", normal_style), Paragraph(format_inr(invoice.labour_total), right_style)],
+        [Paragraph("Parts Total:" if invoice.status == "FINALIZED" else "Parts Estimate:", normal_style), Paragraph(format_inr(invoice.parts_total), right_style)],
+        [Paragraph("Labour Total:" if invoice.status == "FINALIZED" else "Labour Estimate:", normal_style), Paragraph(format_inr(invoice.labour_total), right_style)],
     ]
     if invoice.other_charges_total > 0:
         summary_rows.append([Paragraph("Other Charges / Consumables:", normal_style), Paragraph(format_inr(invoice.other_charges_total), right_style)])
@@ -257,16 +280,21 @@ def generate_invoice_pdf(
     if invoice.tax_total > 0:
         summary_rows.append([Paragraph("GST / Tax:", normal_style), Paragraph(format_inr(invoice.tax_total), right_style)])
     
+    total_label = "<b>GRAND TOTAL:</b>" if invoice.status == "FINALIZED" else "<b>ESTIMATED TOTAL:</b>"
     summary_rows.append([
-        Paragraph("<b>GRAND TOTAL:</b>", bold_style),
+        Paragraph(total_label, bold_style),
         Paragraph(f"<b>{format_inr(invoice.grand_total)}</b>", right_bold)
     ])
 
     # Payment settlement line
     amount_paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in invoice.payments)) if invoice.payments else 0
     balance = max(0, invoice.grand_total - amount_paid)
-    summary_rows.append([Paragraph("Amount Paid:", normal_style), Paragraph(format_inr(amount_paid), right_style)])
-    summary_rows.append([Paragraph("<b>Balance Due:</b>", bold_style), Paragraph(f"<b>{format_inr(balance)}</b>", right_bold)])
+    if invoice.status == "FINALIZED":
+        summary_rows.append([Paragraph("Amount Paid:", normal_style), Paragraph(format_inr(amount_paid), right_style)])
+        summary_rows.append([Paragraph("<b>Balance Due:</b>", bold_style), Paragraph(f"<b>{format_inr(balance)}</b>", right_bold)])
+    elif amount_paid > 0:
+        summary_rows.append([Paragraph("Advance Received:", normal_style), Paragraph(format_inr(amount_paid), right_style)])
+        summary_rows.append([Paragraph("<b>Estimated Balance:</b>", bold_style), Paragraph(f"<b>{format_inr(balance)}</b>", right_bold)])
 
     sum_table = Table(summary_rows, colWidths=[125 * mm, 55 * mm])
     sum_table.setStyle(TableStyle([

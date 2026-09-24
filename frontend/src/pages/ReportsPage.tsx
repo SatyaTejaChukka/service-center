@@ -1,13 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, Calendar, IndianRupee, Clock, AlertTriangle } from 'lucide-react';
+import { BarChart3, Calendar, IndianRupee, Clock, AlertTriangle, MessageCircle } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { formatINR } from '../lib/formatters';
+import { useAuth } from '../context/AuthContext';
+import { WhatsAppPreviewModal } from '../components/common/WhatsAppPreviewModal';
+import { buildPaymentReminderMessage } from '../lib/whatsapp';
 
 export const ReportsPage: React.FC = () => {
+  const { workshop } = useAuth();
   const [activeTab, setActiveTab] = useState<'DAILY' | 'RECEIVABLES'>('DAILY');
   const [dailyData, setDailyData] = useState<any>(null);
   const [receivables, setReceivables] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // WhatsApp reminder state
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [selectedReceivable, setSelectedReceivable] = useState<any>(null);
+  const [whatsAppMessage, setWhatsAppMessage] = useState('');
+
+  const handleRemindWhatsApp = (r: any) => {
+    setSelectedReceivable(r);
+    const msg = buildPaymentReminderMessage({
+      customerName: r.customer_name,
+      vehicleReg: r.vehicle_reg,
+      invoiceNo: r.invoice_number,
+      balanceDuePaise: r.balance_due,
+      daysOverdue: r.days_overdue,
+      workshop
+    });
+    setWhatsAppMessage(msg);
+    setShowWhatsAppModal(true);
+  };
 
   const fetchReports = async () => {
     try {
@@ -127,6 +150,7 @@ export const ReportsPage: React.FC = () => {
                 <th className="px-4 py-3 text-right">Invoice Total</th>
                 <th className="px-4 py-3 text-right">Balance Due</th>
                 <th className="px-4 py-3 text-center">Days Overdue</th>
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-workshop-border-soft">
@@ -146,14 +170,36 @@ export const ReportsPage: React.FC = () => {
                       {r.days_overdue} days
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleRemindWhatsApp(r)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer active:scale-98"
+                      title="Send 1-Click WhatsApp Payment Reminder"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 fill-white" /> Remind
+                    </button>
+                  </td>
                 </tr>
               ))}
               {(!receivables?.invoices || receivables.invoices.length === 0) && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-xs text-workshop-muted">No outstanding receivables. All bills are fully settled!</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-xs text-workshop-muted">No outstanding receivables. All bills are fully settled!</td></tr>
               )}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* WhatsApp Payment Reminder Modal */}
+      {selectedReceivable && (
+        <WhatsAppPreviewModal
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
+          title="Send Payment Reminder on WhatsApp"
+          customerName={selectedReceivable.customer_name}
+          customerPhone={selectedReceivable.customer_phone}
+          initialMessage={whatsAppMessage}
+        />
       )}
 
     </div>

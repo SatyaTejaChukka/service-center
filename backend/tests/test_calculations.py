@@ -112,3 +112,33 @@ def test_payments_and_status_transitions():
     assert res_reversed.amount_paid == 40000
     assert res_reversed.balance_due == 60000
     assert res_reversed.payment_status == "PARTIALLY_PAID"
+
+def test_draft_invoice_estimate_totals():
+    """
+    Verifies that in draft quotation phase, recommended items populate estimate totals
+    and are not shown as ₹0, while rejected items are strictly excluded.
+    """
+    parts = [
+        LineItemCalc(quantity=1.0, unit_price=70000, status="RECOMMENDED"),  # Wiper blade ₹700
+        LineItemCalc(quantity=1.0, unit_price=120000, status="REJECTED"),   # Horn upgrade ₹1,200 (REJECTED)
+    ]
+    labour = [
+        LineItemCalc(quantity=1.0, unit_price=80000, status="RECOMMENDED"),  # Wheel balancing ₹800
+        LineItemCalc(quantity=1.0, unit_price=75000, status="RECOMMENDED"),  # Car wash ₹750
+    ]
+    other_charges = []
+
+    # In draft mode with no approvals yet:
+    res = calculate_invoice_totals(parts, labour, other_charges, is_draft=True)
+    assert res.estimated_parts_total == 70000
+    assert res.estimated_labour_total == 155000
+    assert res.estimated_grand_total == 225000
+    assert res.grand_total == 225000
+    assert res.parts_total == 70000
+    assert res.labour_total == 155000
+
+    # In finalized mode (without customer approval):
+    res_final = calculate_invoice_totals(parts, labour, other_charges, is_draft=False)
+    assert res_final.grand_total == 0
+    assert res_final.estimated_grand_total == 225000
+

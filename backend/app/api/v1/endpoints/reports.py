@@ -48,6 +48,8 @@ def get_daily_summary(
         by_method[p.method] = by_method.get(p.method, 0) + amount
         total_received += amount
 
+    clean_by_method = {k: v for k, v in by_method.items() if v > 0}
+
     return {
         "date": target_date.strftime("%d/%m/%Y"),
         "jobs_opened": jobs_opened,
@@ -55,7 +57,7 @@ def get_daily_summary(
         "invoices_issued_count": len(invoices_finalized),
         "invoiced_value_paise": invoiced_value,
         "payments_total_paise": max(0, total_received),
-        "payments_by_method": by_method
+        "payments_by_method": clean_by_method
     }
 
 @router.get("/outstanding-receivables")

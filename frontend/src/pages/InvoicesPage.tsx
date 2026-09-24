@@ -167,14 +167,19 @@ export const InvoicesPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-workshop-text">
                       {formatINR(inv.grand_total)}
+                      {inv.status === 'DRAFT' && <span className="block text-[10px] text-amber-700 font-normal">Estimate</span>}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-workshop-green">
                       {formatINR(inv.amount_paid)}
                     </td>
                     <td className="px-4 py-3 text-right font-mono font-bold text-xs">
-                      <span className={inv.balance_due > 0 ? 'text-workshop-red' : 'text-workshop-green'}>
-                        {formatINR(inv.balance_due)}
-                      </span>
+                      {inv.status === 'FINALIZED' ? (
+                        <span className={inv.balance_due > 0 ? 'text-workshop-red' : 'text-workshop-green'}>
+                          {formatINR(inv.balance_due)}
+                        </span>
+                      ) : (
+                        <span className="text-workshop-muted font-normal text-[11px]">— (Draft)</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-xs font-semibold">
                       <div className="flex items-center justify-end gap-2">

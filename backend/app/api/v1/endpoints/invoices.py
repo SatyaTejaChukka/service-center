@@ -51,7 +51,8 @@ def sync_invoice_calculations(db: Session, invoice: Invoice):
         discount_paise=invoice.discount,
         tax_paise=invoice.tax_total,
         round_off_paise=invoice.round_off,
-        payments=payments_calc
+        payments=payments_calc,
+        is_draft=(invoice.status == "DRAFT")
     )
 
     invoice.parts_total = res.parts_total
@@ -61,6 +62,7 @@ def sync_invoice_calculations(db: Session, invoice: Invoice):
     invoice.grand_total = res.grand_total
     invoice.payment_status = res.payment_status
     db.flush()
+    return res
 
 @router.get("")
 def list_invoices(
@@ -75,14 +77,14 @@ def list_invoices(
     if status_filter:
         query = query.filter(Invoice.status == status_filter)
     if payment_status:
-        query = query.filter(Invoice.payment_status == payment_status)
+        query = query.filter(Invoice.status == "FINALIZED", Invoice.payment_status == payment_status)
 
     invoices = query.order_by(Invoice.created_at.desc()).offset(skip).limit(limit).all()
     results = []
     for inv in invoices:
         jc = inv.job_card
         paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
-        balance = max(0, inv.grand_total - paid)
+        balance = max(0, inv.grand_total - paid) if inv.status == "FINALIZED" else 0
         results.append({
             "id": inv.id,
             "invoice_number": inv.invoice_number,
@@ -95,7 +97,7 @@ def list_invoices(
             "grand_total": inv.grand_total,
             "amount_paid": paid,
             "balance_due": balance,
-            "payment_status": inv.payment_status,
+            "payment_status": inv.payment_status if inv.status == "FINALIZED" else "DRAFT",
             "finalized_at": inv.finalized_at.strftime("%d/%m/%Y") if inv.finalized_at else None
         })
     return results
@@ -121,25 +123,50 @@ def get_invoice_detail(
 
     # Approved lines
     approved_parts = [
-        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total}
+        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
         for p in jc.parts_items if p.status in ("APPROVED", "USED")
     ] if jc else []
+
+    recommended_parts = [
+        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
+        for p in jc.parts_items if p.status == "RECOMMENDED"
+    ] if jc else []
+
+    rejected_parts = [
+        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
+        for p in jc.parts_items if p.status == "REJECTED"
+    ] if jc else []
     
-    # Excluded (rejected or pending) lines
+    # Excluded (rejected or pending) lines for backwards compatibility
     excluded_parts = [
         {"id": p.id, "description": p.description, "quantity": p.quantity, "unit_price": p.unit_price, "status": p.status}
         for p in jc.parts_items if p.status not in ("APPROVED", "USED")
     ] if jc else []
 
     approved_labour = [
-        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total}
+        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
         for l in jc.labour_items if l.status in ("APPROVED", "DONE")
+    ] if jc else []
+
+    recommended_labour = [
+        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
+        for l in jc.labour_items if l.status == "RECOMMENDED"
+    ] if jc else []
+
+    rejected_labour = [
+        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
+        for l in jc.labour_items if l.status == "REJECTED"
     ] if jc else []
 
     excluded_labour = [
         {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "status": l.status}
         for l in jc.labour_items if l.status not in ("APPROVED", "DONE")
     ] if jc else []
+
+    # Estimate calculations for transparency
+    est_parts_tot = sum(p["total"] for p in approved_parts) + sum(p["total"] for p in recommended_parts)
+    est_labour_tot = sum(l["total"] for l in approved_labour) + sum(l["total"] for l in recommended_labour)
+    est_grand = max(0, est_parts_tot + est_labour_tot + inv.other_charges_total - inv.discount)
 
     return {
         "id": inv.id,
@@ -172,9 +199,16 @@ def get_invoice_detail(
         "voided_at": inv.voided_at.strftime("%d/%m/%Y %I:%M %p") if inv.voided_at else None,
         "void_reason": inv.void_reason,
         "approved_parts": approved_parts,
+        "recommended_parts": recommended_parts,
+        "rejected_parts": rejected_parts,
         "excluded_parts": excluded_parts,
         "approved_labour": approved_labour,
+        "recommended_labour": recommended_labour,
+        "rejected_labour": rejected_labour,
         "excluded_labour": excluded_labour,
+        "estimated_parts_total": est_parts_tot,
+        "estimated_labour_total": est_labour_tot,
+        "estimated_grand_total": est_grand,
         "other_charges": [
             {"id": o.id, "description": o.description, "amount": o.amount}
             for o in inv.other_charges
@@ -280,8 +314,6 @@ def finalize_invoice(
     if inv.status != "DRAFT":
         raise HTTPException(status_code=400, detail="Only DRAFT invoices can be finalised")
 
-    sync_invoice_calculations(db, inv)
-
     # Retry loop handles the rare case where two concurrent finalize
     # requests generate the same sequence number before either commits.
     max_retries = 3
@@ -292,6 +324,9 @@ def finalize_invoice(
             inv.status = "FINALIZED"
             inv.finalized_at = datetime.utcnow()
             inv.finalized_by = current_user.id
+
+            # Authoritative recalculation under FINALIZED status (strictly approved lines only)
+            sync_invoice_calculations(db, inv)
 
             record_audit(db, current_user.id, "INVOICE_FINALIZE", "invoice", str(inv.id), None, {"number": inv_number, "grand_total": inv.grand_total})
             db.commit()

@@ -11,6 +11,7 @@ def test_benchmark_indexed_search():
     AC-16: Benchmarks search latency on indexed SQLite tables.
     Validates that query latency remains well below the 300ms PRD target.
     """
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         # Warm up connection pool & SQLite cache
