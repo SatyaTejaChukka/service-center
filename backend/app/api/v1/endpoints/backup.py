@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.security import require_admin
 from app.core.audit import record_audit
 from app.models import User
@@ -89,10 +89,26 @@ def trigger_restore(
     if not folder_path:
         raise HTTPException(status_code=400, detail="backup_folder_path is required")
 
+    # Capture admin ID before closing the session — the admin object
+    # is attached to the DI session which we must close before restore.
+    admin_id = admin.id
+
     try:
+        # Close the DI-injected session so its connection is released
+        # before restore_backup() disposes the engine & replaces the DB file.
+        db.close()
+
         res = restore_backup(folder_path)
-        record_audit(db, admin.id, "BACKUP_RESTORE", "backup", folder_path, None, res)
-        db.commit()
+
+        # After restore, the old engine was disposed and a new one created.
+        # Open a fresh session against the restored database for the audit log.
+        fresh_db = SessionLocal()
+        try:
+            record_audit(fresh_db, admin_id, "BACKUP_RESTORE", "backup", folder_path, None, res)
+            fresh_db.commit()
+        finally:
+            fresh_db.close()
+
         return {
             "message": "Database and files successfully restored. Please re-login.",
             "details": res

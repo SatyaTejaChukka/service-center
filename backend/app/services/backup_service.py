@@ -108,10 +108,13 @@ def create_online_backup(destination_folder: Optional[str] = None) -> Dict[str, 
     }
 
 
+from sqlalchemy import text
+from app.core.database import engine, verify_db_integrity
+
 def restore_backup(backup_folder_path: str) -> Dict[str, Any]:
     """
-    Restores data from a backup snapshot.
-    Takes a safety backup of current data first, verifies manifest checksums, and restores.
+    Restores data from a backup snapshot safely on Windows.
+    Flushes WAL, disposes engine connection pool, cleans stale journals, overwrites DB, and verifies integrity.
     """
     b_path = Path(backup_folder_path)
     manifest_path = b_path / "manifest.json"
@@ -135,19 +138,48 @@ def restore_backup(backup_folder_path: str) -> Dict[str, Any]:
     safety_dir = settings.backups_dir / f"safety_pre_restore_{now.strftime('%Y-%m-%d_%H%M%S')}"
     safety_dir.mkdir(parents=True, exist_ok=True)
     if settings.db_path.exists():
+        # Checkpoint WAL first to flush any uncommitted transactions into .db
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+        except Exception:
+            pass
         shutil.copy2(settings.db_path, safety_dir / "automotive.db")
 
-    # 2. Overwrite database
+    # 2. Safely close all engine connection pool handles so Windows unlocks the file
+    try:
+        engine.dispose()
+    except Exception:
+        pass
+
+    # 3. Clean up stale WAL / SHM files if present on disk
+    wal_file = settings.db_path.with_name(f"{settings.db_path.name}-wal")
+    shm_file = settings.db_path.with_name(f"{settings.db_path.name}-shm")
+    if wal_file.exists():
+        try:
+            wal_file.unlink()
+        except Exception:
+            pass
+    if shm_file.exists():
+        try:
+            shm_file.unlink()
+        except Exception:
+            pass
+
+    # 4. Overwrite database with verified backup file
     b_db = b_path / "automotive.db"
     if b_db.exists():
         shutil.copy2(b_db, settings.db_path)
 
-    # 3. Restore documents
+    # 5. Restore documents
     for sub in ["invoices", "job_cards", "vehicle_photos", "attachments"]:
         src_sub = b_path / sub
         dst_sub = settings.documents_dir / sub
         if src_sub.exists():
             shutil.copytree(src_sub, dst_sub, dirs_exist_ok=True)
+
+    # 6. Verify integrity of newly restored database
+    verify_db_integrity()
 
     return {
         "status": "success",
