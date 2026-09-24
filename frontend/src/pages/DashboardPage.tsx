@@ -101,7 +101,7 @@ export const DashboardPage: React.FC<Props> = ({
             {getGreeting()}
           </h2>
           <p className="text-sm text-workshop-muted">
-            Here's what's happening at Pushpa Raj Automotive today.
+            Here's what's happening at your workshop today.
           </p>
         </div>
 

@@ -108,12 +108,12 @@ export const GlobalSearchModal: React.FC<Props> = ({ isOpen, onClose, onNavigate
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-16 bg-black/60 backdrop-blur-sm p-4 cursor-pointer"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain flex flex-col items-center justify-start pt-10 sm:pt-16 bg-black/60 backdrop-blur-sm p-3 sm:p-4 cursor-pointer"
       onClick={onClose}
     >
       {/* Inner modal dialog - stops click propagation so clicking inside does not close */}
       <div
-        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-workshop-border overflow-hidden animate-in fade-in zoom-in-95 duration-150 cursor-default"
+        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl border border-workshop-border overflow-hidden animate-in fade-in zoom-in-95 duration-150 cursor-default shrink-0 mb-8"
         onClick={(e) => e.stopPropagation()}
       >
         
@@ -151,7 +151,7 @@ export const GlobalSearchModal: React.FC<Props> = ({ isOpen, onClose, onNavigate
         </div>
 
         {/* Results Area */}
-        <div className="max-h-[60vh] overflow-y-auto p-4 space-y-5 bg-[#FAFAF8]">
+        <div className="max-h-[60vh] overflow-y-auto overscroll-contain p-4 space-y-5 bg-[#FAFAF8]">
           {loading && (
             <div className="py-8 text-center text-sm text-workshop-muted animate-pulse">
               Searching database...
@@ -311,7 +311,7 @@ export const GlobalSearchModal: React.FC<Props> = ({ isOpen, onClose, onNavigate
 
         {/* Modal Footer */}
         <div className="px-4 py-2.5 bg-gray-50 border-t border-workshop-border flex items-center justify-between text-xs text-workshop-muted">
-          <span>Pushpa Raj Automotive Omnibox Search</span>
+          <span>Fast Global Omnibox Search</span>
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline">Press <kbd className="px-1.5 py-0.5 bg-white border border-gray-300 rounded font-mono">ESC</kbd> or click outside to close</span>
             <button

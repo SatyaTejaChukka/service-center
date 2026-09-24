@@ -9,16 +9,16 @@ export const SetupWizardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    admin_username: 'pushparaj',
+    admin_username: '',
     admin_password: '',
     admin_confirm_password: '',
-    admin_full_name: 'Pushpa Raj',
-    business_name: 'Pushpa Raj Automotive Services',
-    business_address: 'Main Road, Autonagar, Industrial Estate',
-    business_phone: '+91 98765 43210',
-    business_email: 'service@pushparajauto.com',
+    admin_full_name: '',
+    business_name: '',
+    business_address: '',
+    business_phone: '',
+    business_email: '',
     business_gstin: '',
-    business_upi_id: 'pushparajauto@upi',
+    business_upi_id: '',
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -65,8 +65,8 @@ export const SetupWizardPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F6F8] flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-workshop-border overflow-hidden">
+    <div className="h-full w-full overflow-y-auto overscroll-contain bg-[#F5F6F8] flex flex-col items-center p-4 sm:p-6 md:p-8">
+      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-workshop-border overflow-hidden my-auto shrink-0">
         
         {/* Header Banner */}
         <div className="bg-brand p-6 text-white text-center">
@@ -105,6 +105,7 @@ export const SetupWizardPage: React.FC = () => {
                   required
                   value={formData.admin_username}
                   onChange={handleChange}
+                  placeholder="e.g. admin or workshop_owner"
                   className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                 />
               </div>
@@ -118,6 +119,7 @@ export const SetupWizardPage: React.FC = () => {
                   required
                   value={formData.admin_full_name}
                   onChange={handleChange}
+                  placeholder="e.g. Pushpa Raj"
                   className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                 />
               </div>
@@ -170,6 +172,7 @@ export const SetupWizardPage: React.FC = () => {
                   required
                   value={formData.business_name}
                   onChange={handleChange}
+                  placeholder="e.g. Pushpa Raj Automotive Services"
                   className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                 />
               </div>
@@ -184,6 +187,7 @@ export const SetupWizardPage: React.FC = () => {
                   required
                   value={formData.business_address}
                   onChange={handleChange}
+                  placeholder="e.g. Main Road, Autonagar, Industrial Estate"
                   className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                 />
               </div>
@@ -199,6 +203,7 @@ export const SetupWizardPage: React.FC = () => {
                     required
                     value={formData.business_phone}
                     onChange={handleChange}
+                    placeholder="e.g. +91 98765 43210"
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                   />
                 </div>
@@ -237,6 +242,7 @@ export const SetupWizardPage: React.FC = () => {
                     name="business_email"
                     value={formData.business_email}
                     onChange={handleChange}
+                    placeholder="e.g. service@pushparajauto.com"
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
                   />
                 </div>
