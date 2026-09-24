@@ -38,20 +38,28 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   const [payAmount, setPayAmount] = useState<number>(0);
   const [payMethod, setPayMethod] = useState('UPI');
   const [payRef, setPayRef] = useState('');
+  const [payNote, setPayNote] = useState('');
 
   // Other charge form
   const [showChargeModal, setShowChargeModal] = useState(false);
-  const [chargeDesc, setChargeDesc] = useState('Consumables & Shop Supplies');
-  const [chargeAmount, setChargeAmount] = useState<number>(200);
+  const [chargeDesc, setChargeDesc] = useState('');
+  const [chargeAmount, setChargeAmount] = useState<number>(0);
 
   // Discount form
   const [showDiscountModal, setShowDiscountModal] = useState(false);
-  const [discountAmt, setDiscountAmt] = useState<number>(100);
-  const [discountReason, setDiscountReason] = useState('Festive discount');
+  const [discountAmt, setDiscountAmt] = useState<number>(0);
+  const [discountReason, setDiscountReason] = useState('');
 
   // Void modal
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState('');
+
+  // Business profile for header branding
+  const [businessProfile, setBusinessProfile] = useState<{ business_name?: string; business_address?: string } | null>(null);
+
+  useEffect(() => {
+    apiRequest('/settings/business').then(setBusinessProfile).catch(() => {});
+  }, []);
 
   const fetchInvoice = async () => {
     try {
@@ -86,6 +94,21 @@ export const InvoiceDetailModal: React.FC<Props> = ({
     }
   };
 
+  const handleReversePayment = async (paymentId: number) => {
+    const reason = window.prompt('Enter reason for payment reversal (e.g. Mistaken receipt entry):');
+    if (!reason || !reason.trim()) return;
+    try {
+      await apiRequest(`/invoices/${invoiceId}/payments/${paymentId}/reverse`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+      fetchInvoice();
+      if (onInvoiceUpdated) onInvoiceUpdated();
+    } catch (err: any) {
+      alert(err.message || 'Payment reversal failed');
+    }
+  };
+
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -94,11 +117,13 @@ export const InvoiceDetailModal: React.FC<Props> = ({
         body: JSON.stringify({
           amount: Math.round(payAmount * 100),
           method: payMethod,
-          reference: payRef || undefined,
+          reference: payRef.trim() || undefined,
+          note: payNote.trim() || undefined,
         }),
       });
       setShowPayModal(false);
       setPayRef('');
+      setPayNote('');
       fetchInvoice();
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
@@ -164,8 +189,8 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-workshop-border overflow-hidden my-6 max-h-[94vh] flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-sm p-3 sm:p-4 md:p-6 flex flex-col items-center justify-start sm:justify-center">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-workshop-border overflow-hidden my-auto shrink-0 max-h-[94vh] flex flex-col">
         
         {/* Modal Top Bar */}
         <div className="px-6 py-4 border-b border-workshop-border bg-[#F8FAFC] flex items-center justify-between shrink-0">
@@ -191,7 +216,7 @@ export const InvoiceDetailModal: React.FC<Props> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
           {loading && (
             <div className="py-12 text-center text-sm text-workshop-muted animate-pulse">
               Loading invoice...
@@ -216,11 +241,11 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
               {/* Brand Header */}
               <div className="text-center border-b border-workshop-border pb-4 space-y-1">
-                <h4 className="font-display font-bold text-2xl tracking-tight text-workshop-text">
-                  PUSHPA RAJ AUTOMOTIVE SERVICES
+                <h4 className="font-display font-bold text-2xl tracking-tight text-workshop-text uppercase">
+                  {businessProfile?.business_name || 'Automotive Services'}
                 </h4>
                 <div className="text-xs text-workshop-muted font-medium">
-                  Tax Invoice / Service Bill &bull; Plot 45, Auto Nagar
+                  Tax Invoice / Service Bill &bull; {businessProfile?.business_address || 'Workshop Services'}
                 </div>
               </div>
 
@@ -303,6 +328,18 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                         <td className="py-2 text-right font-mono font-semibold">{formatINR(l.total)}</td>
                       </tr>
                     ))}
+                    {data.excluded_labour && data.excluded_labour.map((l: any) => (
+                      <tr key={l.id} className="text-gray-400 bg-amber-50/20">
+                        <td className="py-2 line-through">
+                          {l.description}
+                          <span className="block text-[10px] text-amber-700 italic no-underline">
+                            Awaiting decision / Rejected — excluded from bill
+                          </span>
+                        </td>
+                        <td className="py-2 text-right font-mono line-through">{l.quantity}</td>
+                        <td className="py-2 text-right font-mono line-through">{formatINR(l.quantity * l.unit_price)}</td>
+                      </tr>
+                    ))}
                     <tr className="font-bold border-t border-workshop-border">
                       <td colSpan={2} className="py-2">Labour Total:</td>
                       <td className="py-2 text-right font-mono text-brand-deep">{formatINR(data.labour_total)}</td>
@@ -355,16 +392,47 @@ export const InvoiceDetailModal: React.FC<Props> = ({
                   <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider block mb-2">
                     Payment Receipts ({data.payment_status})
                   </span>
-                  <div className="space-y-1 text-xs">
-                    {data.payments.map((p: any) => (
-                      <div key={p.id} className="flex justify-between p-2 bg-green-50/60 rounded-md border border-green-200">
-                        <div>
-                          <span className="font-bold text-green-900">{p.method}</span>
-                          {p.reference && <span className="text-workshop-muted ml-2 font-mono">Ref: {p.reference}</span>}
+                  <div className="space-y-1.5 text-xs">
+                    {data.payments.map((p: any) => {
+                      const isRev = p.is_reversal;
+                      const hasBeenReversed = data.payments.some((r: any) => r.is_reversal && r.reference === `REV-${p.id}`);
+                      return (
+                        <div
+                          key={p.id}
+                          className={`p-2 rounded-md border ${
+                            isRev
+                              ? 'bg-red-50/70 border-red-200 text-red-900'
+                              : 'bg-green-50/60 border-green-200 text-green-900'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isRev ? 'bg-red-200 text-red-800' : 'bg-green-200 text-green-800'}`}>
+                                {isRev ? 'REVERSAL' : p.method}
+                              </span>
+                              {p.reference && <span className="text-workshop-muted font-mono">Ref: {p.reference}</span>}
+                              <span className="text-[11px] text-workshop-muted">{p.paid_at}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono font-bold ${isRev ? 'text-workshop-red' : 'text-green-900'}`}>
+                                {isRev ? `-${formatINR(p.amount)}` : formatINR(p.amount)}
+                              </span>
+                              {!isRev && !hasBeenReversed && data.status !== 'VOID' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReversePayment(p.id)}
+                                  className="px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-semibold rounded cursor-pointer transition"
+                                  title="Reverse this payment entry"
+                                >
+                                  Reverse
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {p.note && <div className="text-[11px] opacity-80 italic mt-1">{p.note}</div>}
                         </div>
-                        <div className="font-mono font-bold text-green-900">{formatINR(p.amount)}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -440,8 +508,8 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
       {/* Record Payment Sub-Modal */}
       {showPayModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={handleRecordPayment} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+        <div className="fixed inset-0 z-60 overflow-y-auto overscroll-contain bg-black/60 p-4 flex flex-col items-center justify-center">
+          <form onSubmit={handleRecordPayment} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4 my-auto shrink-0">
             <h4 className="font-bold text-base text-workshop-text">Record Customer Payment</h4>
             <div>
               <label className="block text-xs font-semibold text-workshop-text mb-1">Amount (₹) *</label>
@@ -485,6 +553,17 @@ export const InvoiceDetailModal: React.FC<Props> = ({
               />
             </div>
 
+            <div>
+              <label className="block text-xs font-semibold text-workshop-text mb-1">Payment Note / Remarks (Optional)</label>
+              <input
+                type="text"
+                value={payNote}
+                onChange={(e) => setPayNote(e.target.value)}
+                placeholder="e.g. Advance paid, balance on delivery"
+                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+              />
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -506,8 +585,8 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
       {/* Add Other Charge Sub-Modal */}
       {showChargeModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={handleAddCharge} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+        <div className="fixed inset-0 z-60 overflow-y-auto overscroll-contain bg-black/60 p-4 flex flex-col items-center justify-center">
+          <form onSubmit={handleAddCharge} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4 my-auto shrink-0">
             <h4 className="font-bold text-base text-workshop-text">Add Other Charge</h4>
             <div>
               <label className="block text-xs font-semibold text-workshop-text mb-1">Description *</label>
@@ -551,8 +630,8 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
       {/* Discount Sub-Modal */}
       {showDiscountModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={handleApplyDiscount} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+        <div className="fixed inset-0 z-60 overflow-y-auto overscroll-contain bg-black/60 p-4 flex flex-col items-center justify-center">
+          <form onSubmit={handleApplyDiscount} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4 my-auto shrink-0">
             <h4 className="font-bold text-base text-workshop-text">Apply Invoice Discount</h4>
             <div>
               <label className="block text-xs font-semibold text-workshop-text mb-1">Discount Amount (₹) *</label>
@@ -595,8 +674,8 @@ export const InvoiceDetailModal: React.FC<Props> = ({
 
       {/* Void Sub-Modal */}
       {showVoidModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={handleVoidInvoice} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4">
+        <div className="fixed inset-0 z-60 overflow-y-auto overscroll-contain bg-black/60 p-4 flex flex-col items-center justify-center">
+          <form onSubmit={handleVoidInvoice} className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full space-y-4 my-auto shrink-0">
             <h4 className="font-bold text-base text-red-700">Void Invoice ({data?.invoice_number})</h4>
             <p className="text-xs text-workshop-muted">
               Voiding an invoice locks it permanently and marks it for audit. The invoice number is retained and never reused.
@@ -630,6 +709,7 @@ export const InvoiceDetailModal: React.FC<Props> = ({
           </form>
         </div>
       )}
+
 
     </div>
   );
