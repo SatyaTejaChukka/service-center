@@ -21,7 +21,12 @@ def create_labour_catalog_item(
     admin: User = Depends(require_admin)
 ):
     name = data.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Labour item name is required")
     rate = data.get("default_rate", 0)
+    if rate < 0:
+        raise HTTPException(status_code=400, detail="Default rate cannot be negative")
+
     existing = db.query(LabourCatalog).filter(LabourCatalog.name == name).first()
     if existing:
         existing.is_active = True
@@ -57,9 +62,23 @@ def create_parts_catalog_item(
     admin: User = Depends(require_admin)
 ):
     name = data.get("name", "").strip()
-    part_no = data.get("part_number", "").strip() or None
-    unit = data.get("unit", "pcs").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Part name is required")
     price = data.get("default_price", 0)
+    if price < 0:
+        raise HTTPException(status_code=400, detail="Default price cannot be negative")
+    part_no = data.get("part_number", "").strip() or None
+    unit = data.get("unit", "pcs").strip() or "pcs"
+
+    existing = db.query(PartsCatalog).filter(PartsCatalog.name == name).first()
+    if existing:
+        existing.is_active = True
+        existing.part_number = part_no
+        existing.unit = unit
+        existing.default_price = price
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     item = PartsCatalog(
         name=name,
