@@ -30,6 +30,11 @@ STANDARD_INSPECTION_CATEGORIES = [
     "Lights", "Fluids", "AC", "Others"
 ]
 
+VALID_JOB_CARD_STATUSES = {
+    "RECEIVED", "INSPECTION", "WAITING_FOR_APPROVAL", "APPROVED",
+    "IN_PROGRESS", "READY_FOR_DELIVERY", "COMPLETED", "CANCELLED"
+}
+
 def recalculate_job_card_invoice(db: Session, job_card: JobCard) -> Invoice:
     """Helper to recalculate draft invoice totals from approved job card lines."""
     inv = job_card.invoice
@@ -241,12 +246,16 @@ def get_job_card_detail(
         "odometer": jc.odometer,
         "fuel_level": jc.fuel_level,
         "notes": jc.notes,
+        "promised_at": jc.promised_at.strftime("%d/%m/%Y %I:%M %p") if jc.promised_at else None,
+        "assigned_to": jc.assigned_to,
+        "assigned_to_name": jc.assigned_user.full_name if jc.assigned_user else None,
         "cancelled_reason": jc.cancelled_reason,
         "customer": {
             "id": jc.customer.id,
             "name": jc.customer.name,
             "phone": jc.customer.phone,
             "alt_phone": jc.customer.alt_phone,
+            "email": jc.customer.email,
             "address": jc.customer.address
         },
         "vehicle": {
@@ -254,8 +263,12 @@ def get_job_card_detail(
             "registration_number": jc.vehicle.registration_number,
             "make": jc.vehicle.make,
             "model": jc.vehicle.model,
+            "variant": jc.vehicle.variant,
             "fuel_type": jc.vehicle.fuel_type,
-            "vin": jc.vehicle.vin
+            "year": jc.vehicle.year,
+            "colour": jc.vehicle.colour,
+            "vin": jc.vehicle.vin,
+            "engine_number": jc.vehicle.engine_number
         },
         "last_service": last_service_summary,
         "complaints": [
@@ -346,7 +359,13 @@ def update_job_card_status(
         raise HTTPException(status_code=404, detail="Job card not found")
 
     old_status = jc.status
-    new_status = req.status.upper()
+    new_status = req.status.strip().upper()
+
+    if new_status not in VALID_JOB_CARD_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid job card status '{new_status}'. Allowed statuses: {', '.join(sorted(VALID_JOB_CARD_STATUSES))}"
+        )
 
     # Rule: Completed cannot be edited by Service Staff
     if old_status == "COMPLETED" and current_user.role != "ADMIN":
@@ -451,6 +470,8 @@ def add_labour_item(
     jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
     if not jc:
         raise HTTPException(status_code=404, detail="Job card not found")
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
     if jc.status == "COMPLETED" and current_user.role != "ADMIN":
         raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
 
@@ -482,6 +503,10 @@ def delete_labour_item(
     if not item:
         raise HTTPException(status_code=404, detail="Labour line not found")
     jc = item.job_card
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
+    if jc.status == "COMPLETED" and current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
     db.delete(item)
     db.flush()
     recalculate_job_card_invoice(db, jc)
@@ -498,6 +523,8 @@ def add_part_item(
     jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
     if not jc:
         raise HTTPException(status_code=404, detail="Job card not found")
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
     if jc.status == "COMPLETED" and current_user.role != "ADMIN":
         raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
 
@@ -531,6 +558,10 @@ def delete_part_item(
     if not item:
         raise HTTPException(status_code=404, detail="Part line not found")
     jc = item.job_card
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify line items on a job card with a finalised invoice.")
+    if jc.status == "COMPLETED" and current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Cannot modify lines on completed job card")
     db.delete(item)
     db.flush()
     recalculate_job_card_invoice(db, jc)
@@ -552,6 +583,8 @@ def record_customer_approvals(
     jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
     if not jc:
         raise HTTPException(status_code=404, detail="Job card not found")
+    if jc.invoice and jc.invoice.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot modify customer approvals on a job card with a finalised invoice.")
 
     # Record approval metadata
     appr = Approval(
