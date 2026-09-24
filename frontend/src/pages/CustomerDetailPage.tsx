@@ -127,7 +127,14 @@ export const CustomerDetailPage: React.FC<Props> = ({
                   <td className="px-4 py-3 text-xs font-mono font-semibold">{jc.vehicle_reg} ({jc.vehicle_model})</td>
                   <td className="px-4 py-3 text-xs">{jc.status}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-xs">
-                    {jc.invoice ? formatINR(jc.invoice.grand_total) : '-'}
+                    {jc.invoice ? (
+                      <span>
+                        {formatINR(jc.invoice.grand_total)}
+                        {jc.invoice.payment_status === 'DRAFT' && (
+                          <span className="block text-[10px] text-amber-700 font-normal">Estimate</span>
+                        )}
+                      </span>
+                    ) : '-'}
                   </td>
                   <td className="px-4 py-3 text-right text-xs font-semibold text-brand">View &rarr;</td>
                 </tr>

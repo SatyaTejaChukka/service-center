@@ -103,7 +103,12 @@ export const VehicleDetailPage: React.FC<Props> = ({
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{h.odometer.toLocaleString('en-IN')} km</td>
                   <td className="px-4 py-3 text-xs text-workshop-text font-medium">{h.work_summary}</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-xs">{formatINR(h.total_amount)}</td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-xs">
+                    {formatINR(h.total_amount)}
+                    {h.invoice_status === 'DRAFT' && (
+                      <span className="block text-[10px] text-amber-700 font-normal">Estimate</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right text-xs">
                     {h.invoice_id ? (
                       <button

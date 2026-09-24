@@ -120,7 +120,8 @@ def get_vehicle_detail(
             "work_summary": summary_str,
             "total_amount": inv.grand_total if inv else 0,
             "invoice_id": inv.id if inv else None,
-            "invoice_number": inv.invoice_number if inv else None
+            "invoice_number": inv.invoice_number if inv else None,
+            "invoice_status": inv.status if inv else None
         })
 
     return {

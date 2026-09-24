@@ -88,7 +88,7 @@ def get_customer_detail(
     for jc in job_cards:
         inv = jc.invoice
         inv_data = None
-        if inv and inv.status != "VOID":
+        if inv and inv.status == "FINALIZED":
             lifetime_spend += inv.grand_total
             paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in inv.payments))
             balance = max(0, inv.grand_total - paid)
@@ -99,6 +99,14 @@ def get_customer_detail(
                 "grand_total": inv.grand_total,
                 "payment_status": inv.payment_status,
                 "balance_due": balance
+            }
+        elif inv and inv.status == "DRAFT":
+            inv_data = {
+                "id": inv.id,
+                "invoice_number": "DRAFT",
+                "grand_total": inv.grand_total,
+                "payment_status": "DRAFT",
+                "balance_due": 0
             }
 
         jobs_summary.append({
