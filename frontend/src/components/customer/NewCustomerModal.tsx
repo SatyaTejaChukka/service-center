@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, UserPlus, AlertTriangle } from 'lucide-react';
 import { apiRequest } from '../../lib/api';
 
@@ -19,8 +19,51 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const hasUnsavedData = Boolean(
+    formData.name.trim() ||
+    formData.phone.trim() ||
+    formData.alt_phone.trim() ||
+    formData.address.trim() ||
+    formData.email.trim() ||
+    formData.notes.trim()
+  );
+
+  // Prevent accidental browser reload / tab close when form has data
+  useEffect(() => {
+    if (!isOpen || !hasUnsavedData) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isOpen, hasUnsavedData]);
 
   if (!isOpen) return null;
+
+  const handleRequestClose = () => {
+    if (hasUnsavedData) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardConfirm(false);
+    setFormData({
+      name: '',
+      phone: '',
+      alt_phone: '',
+      address: '',
+      email: '',
+      notes: '',
+    });
+    setError(null);
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,98 +88,138 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-workshop-border overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-sm p-4 flex flex-col items-center justify-center">
+      <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-workshop-border overflow-hidden my-auto shrink-0">
+        
+        {/* Header */}
         <div className="px-5 py-4 border-b border-workshop-border bg-[#F8FAFC] flex items-center justify-between">
           <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
             <UserPlus className="w-4 h-4 text-brand" /> Add New Customer
           </h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 text-workshop-muted">
+          <button
+            type="button"
+            onClick={handleRequestClose}
+            className="p-1 rounded hover:bg-gray-200 text-workshop-muted transition cursor-pointer"
+            title="Close"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {error && (
-            <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-700" />
-              <span>{error}</span>
+        {/* Discard Confirmation Overlay */}
+        {showDiscardConfirm ? (
+          <div className="p-6 space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-950">Discard entered customer details?</h4>
+                <p className="text-xs text-amber-800 mt-1">
+                  You have unsubmitted information for this customer. If you close now, these details will not be saved.
+                </p>
+              </div>
             </div>
-          )}
 
-          <div>
-            <label className="block text-xs font-semibold text-workshop-text mb-1">Customer Full Name *</label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. Ramesh Varma"
-              className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
-            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDiscardConfirm(false)}
+                className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-50 cursor-pointer"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDiscard}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs"
+              >
+                Discard &amp; Close
+              </button>
+            </div>
           </div>
+        ) : (
+          /* Main Customer Form */
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {error && (
+              <div className="p-3 bg-amber-50 border border-amber-300 text-amber-900 text-xs rounded-lg flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-700" />
+                <span>{error}</span>
+              </div>
+            )}
 
-          <div>
-            <label className="block text-xs font-semibold text-workshop-text mb-1">Primary Mobile Number *</label>
-            <input
-              type="text"
-              required
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="e.g. 9876543210"
-              className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-workshop-text mb-1">Alternate Phone</label>
+              <label className="block text-xs font-semibold text-workshop-text mb-1">Customer Full Name *</label>
               <input
                 type="text"
-                value={formData.alt_phone}
-                onChange={(e) => setFormData({ ...formData, alt_phone: e.target.value })}
-                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Ramesh Varma"
+                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
               />
             </div>
+
             <div>
-              <label className="block text-xs font-semibold text-workshop-text mb-1">Email</label>
+              <label className="block text-xs font-semibold text-workshop-text mb-1">Primary Mobile Number *</label>
               <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+                type="text"
+                required
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="e.g. 9876543210"
+                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono focus:outline-none focus:border-brand"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-workshop-text mb-1">Address</label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="e.g. Auto Nagar, Vijayawada"
-              className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
-            />
-          </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-workshop-text mb-1">Alternate Phone</label>
+                <input
+                  type="text"
+                  value={formData.alt_phone}
+                  onChange={(e) => setFormData({ ...formData, alt_phone: e.target.value })}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono focus:outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-workshop-text mb-1">Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
+                />
+              </div>
+            </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-workshop-border-soft">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-brand text-white font-bold rounded-lg text-xs hover:bg-brand-deep cursor-pointer disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : 'Save Customer'}
-            </button>
-          </div>
-        </form>
+            <div>
+              <label className="block text-xs font-semibold text-workshop-text mb-1">Address</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="e.g. Auto Nagar, Vijayawada"
+                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-workshop-border-soft">
+              <button
+                type="button"
+                onClick={handleRequestClose}
+                className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-brand text-white font-bold rounded-lg text-xs hover:bg-brand-deep cursor-pointer disabled:opacity-50"
+              >
+                {loading ? 'Saving...' : 'Save Customer'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

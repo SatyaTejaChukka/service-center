@@ -10,10 +10,14 @@ import {
   Trash2,
   AlertTriangle,
   FileCheck,
-  Printer
+  Printer,
+  Clock,
+  CalendarClock,
+  Notebook
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../../lib/api';
 import { formatINR } from '../../lib/formatters';
+import { useAuth } from '../../context/AuthContext';
 
 interface Props {
   isOpen: boolean;
@@ -39,6 +43,7 @@ const STANDARD_CATEGORIES = [
 ];
 
 export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCreated }) => {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,75 +58,202 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   const [lastServiceInfo, setLastServiceInfo] = useState<any>(null);
 
   const [customerData, setCustomerData] = useState({
-    name: 'Rahul Kumar',
-    phone: '9876543210',
-    address: 'Plot 4, Autonagar',
+    name: '',
+    phone: '',
+    alt_phone: '',
+    email: '',
+    address: '',
   });
 
   const [vehicleData, setVehicleData] = useState({
-    registration_number: 'AP 31 XX 1234',
-    make: 'Hyundai',
-    model: 'Creta',
-    variant: 'SX (O)',
+    registration_number: '',
+    make: '',
+    model: '',
+    variant: '',
     fuel_type: 'Petrol',
-    odometer: 45230,
+    odometer: 0,
+    fuel_level: '1/2',
     vin: '',
+    engine_number: '',
+    year: '' as string | number,
+    colour: '',
   });
 
+  // Job Card metadata
+  const [jobCardNotes, setJobCardNotes] = useState('');
+  const [promisedAt, setPromisedAt] = useState('');
+  const [assignedTo, setAssignedTo] = useState<number | ''>('');
+  const [staffList, setStaffList] = useState<Array<{ id: number; full_name: string; role: string }>>([]);
+
   // Step 2: Complaints
-  const [complaints, setComplaints] = useState<string[]>([
-    'Engine vibration',
-    'Brake noise',
-    'AC not cooling'
-  ]);
+  const [complaints, setComplaints] = useState<string[]>([]);
   const [newComplaintInput, setNewComplaintInput] = useState('');
 
   // Step 3: Inspection
   const [inspections, setInspections] = useState<Record<string, { status: 'NORMAL' | 'NEEDS_ATTENTION'; notes: string }>>({
     Engine: { status: 'NORMAL', notes: '' },
-    Brakes: { status: 'NEEDS_ATTENTION', notes: 'Front brake pads worn out' },
-    Battery: { status: 'NORMAL', notes: 'Voltage good (12.6V)' },
-    Tyres: { status: 'NORMAL', notes: 'Tread depth OK' },
+    Brakes: { status: 'NORMAL', notes: '' },
+    Battery: { status: 'NORMAL', notes: '' },
+    Tyres: { status: 'NORMAL', notes: '' },
     Suspension: { status: 'NORMAL', notes: '' },
-    Lights: { status: 'NORMAL', notes: 'All lights operational' },
-    Fluids: { status: 'NORMAL', notes: 'Coolant and brake fluid levels OK' },
+    Lights: { status: 'NORMAL', notes: '' },
+    Fluids: { status: 'NORMAL', notes: '' },
     AC: { status: 'NORMAL', notes: '' },
     Others: { status: 'NORMAL', notes: '' },
   });
 
   // Step 4: Work & Parts
   const [labourLines, setLabourLines] = useState<Array<{ description: string; quantity: number; unit_price: number; catalog_id?: number }>>([
-    { description: 'General Service', quantity: 1, unit_price: 100000 },
-    { description: 'Brake Service', quantity: 1, unit_price: 50000 },
   ]);
 
   const [partLines, setPartLines] = useState<Array<{ description: string; part_number?: string; unit: string; quantity: number; unit_price: number; catalog_id?: number }>>([
-    { description: 'Engine Oil', unit: 'litre', quantity: 1, unit_price: 250000 },
-    { description: 'Oil Filter', unit: 'pcs', quantity: 1, unit_price: 50000 },
-    { description: 'Brake Pad', unit: 'set', quantity: 1, unit_price: 280000 },
-    { description: 'Air Filter', unit: 'pcs', quantity: 1, unit_price: 80000 },
   ]);
 
   // Step 5: Approval
-  const [approvals, setApprovals] = useState<Record<string, 'APPROVED' | 'REJECTED'>>({
-    'part_0': 'APPROVED',
-    'part_1': 'APPROVED',
-    'part_2': 'APPROVED',
-    'part_3': 'REJECTED', // Appendix B scenario: Air filter rejected
-    'labour_0': 'APPROVED',
-    'labour_1': 'APPROVED',
-  });
-  const [approverName, setApproverName] = useState('Rahul Kumar');
+  const [approvals, setApprovals] = useState<Record<string, 'APPROVED' | 'REJECTED'>>({});
+  const [approverName, setApproverName] = useState('');
   const [approvalMethod, setApprovalMethod] = useState<'PHONE' | 'IN_PERSON'>('PHONE');
 
   // Step 6: Result
   const [createdJobCard, setCreatedJobCard] = useState<any>(null);
+
+  // Safeguards & Draft auto-save
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
+  const [savedDraftAvailable, setSavedDraftAvailable] = useState<any>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const DRAFT_KEY = 'pr_draft_new_job_card';
+  const isFormDirty = isDirty || step > 1;
+
+  // Check if draft exists on open
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.timestamp && step === 1 && !isDirty) {
+            setSavedDraftAvailable(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse draft job card', e);
+      }
+    }
+  }, [isOpen]);
+
+  // Auto-save draft whenever inputs are dirty
+  useEffect(() => {
+    if (isOpen && isFormDirty && step < 6) {
+      const draft = {
+        step,
+        customerData,
+        vehicleData,
+        jobCardNotes,
+        promisedAt,
+        assignedTo,
+        complaints,
+        inspections,
+        labourLines,
+        partLines,
+        approvals,
+        approverName,
+        approvalMethod,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    }
+  }, [isOpen, isFormDirty, step, customerData, vehicleData, jobCardNotes, promisedAt, assignedTo, complaints, inspections, labourLines, partLines, approvals, approverName, approvalMethod]);
+
+  // Clear draft on job card creation (step 6)
+  useEffect(() => {
+    if (step === 6) {
+      localStorage.removeItem(DRAFT_KEY);
+      setIsDirty(false);
+      setSavedDraftAvailable(null);
+    }
+  }, [step]);
+
+  // Window beforeunload prompt to prevent losing unsubmitted changes
+  useEffect(() => {
+    if (!isOpen || step === 6 || !isFormDirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isOpen, step, isFormDirty]);
+
+  // Global ESC key listener to safely request close
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showDiscardModal) {
+          setShowDiscardModal(false);
+        } else {
+          handleRequestClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isFormDirty, step, showDiscardModal]);
+
+  const handleRequestClose = () => {
+    if (isFormDirty && step < 6) {
+      setShowDiscardModal(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleConfirmDiscard = () => {
+    setShowDiscardModal(false);
+    localStorage.removeItem(DRAFT_KEY);
+    setIsDirty(false);
+    setSavedDraftAvailable(null);
+    onClose();
+  };
+
+  const handleRestoreSavedDraft = () => {
+    if (!savedDraftAvailable) return;
+    try {
+      if (savedDraftAvailable.customerData) setCustomerData(savedDraftAvailable.customerData);
+      if (savedDraftAvailable.vehicleData) setVehicleData(savedDraftAvailable.vehicleData);
+      if (savedDraftAvailable.jobCardNotes) setJobCardNotes(savedDraftAvailable.jobCardNotes);
+      if (savedDraftAvailable.promisedAt) setPromisedAt(savedDraftAvailable.promisedAt);
+      if (savedDraftAvailable.assignedTo) setAssignedTo(savedDraftAvailable.assignedTo);
+      if (savedDraftAvailable.complaints) setComplaints(savedDraftAvailable.complaints);
+      if (savedDraftAvailable.inspections) setInspections(savedDraftAvailable.inspections);
+      if (savedDraftAvailable.labourLines) setLabourLines(savedDraftAvailable.labourLines);
+      if (savedDraftAvailable.partLines) setPartLines(savedDraftAvailable.partLines);
+      if (savedDraftAvailable.approvals) setApprovals(savedDraftAvailable.approvals);
+      if (savedDraftAvailable.approverName) setApproverName(savedDraftAvailable.approverName);
+      if (savedDraftAvailable.approvalMethod) setApprovalMethod(savedDraftAvailable.approvalMethod);
+      if (savedDraftAvailable.step && savedDraftAvailable.step < 6) setStep(savedDraftAvailable.step);
+      setIsDirty(true);
+      setSavedDraftAvailable(null);
+    } catch (e) {
+      console.error('Failed to restore draft', e);
+    }
+  };
+
+  const handleDiscardSavedDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+    setSavedDraftAvailable(null);
+  };
 
   useEffect(() => {
     if (isOpen) {
       // Load catalogs
       apiRequest<any[]>('/catalogs/labour').then(setLabourCatalog).catch(() => {});
       apiRequest<any[]>('/catalogs/parts').then(setPartsCatalog).catch(() => {});
+      // Load staff list for technician assignment (admin only)
+      if (user?.role === 'ADMIN') {
+        apiRequest<any[]>('/users').then(setStaffList).catch(() => {});
+      }
     }
   }, [isOpen]);
 
@@ -137,14 +269,20 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
           registration_number: v.registration_number,
           make: v.make,
           model: v.model,
-          variant: '',
-          fuel_type: 'Petrol',
+          variant: v.variant || '',
+          fuel_type: v.fuel_type || 'Petrol',
           odometer: v.current_odometer,
-          vin: '',
+          fuel_level: '1/2',
+          vin: v.vin || '',
+          engine_number: v.engine_number || '',
+          year: v.year || '',
+          colour: v.colour || '',
         });
         setCustomerData({
           name: v.customer_name,
           phone: v.customer_phone,
+          alt_phone: '',
+          email: '',
           address: '',
         });
         setApproverName(v.customer_name);
@@ -208,8 +346,8 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
       }
     });
 
-    const otherCharges = 20000; // ₹200 consumables default
-    const discount = 10000;     // ₹100 festive default
+    const otherCharges = 0;
+    const discount = 0;
     const subtotal = partsTotal + labourTotal + otherCharges;
     const grandTotal = Math.max(0, subtotal - discount);
 
@@ -228,7 +366,13 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
         try {
           const cRes = await apiRequest<any>('/customers', {
             method: 'POST',
-            body: JSON.stringify(customerData),
+            body: JSON.stringify({
+              name: customerData.name.trim(),
+              phone: customerData.phone.trim(),
+              alt_phone: customerData.alt_phone.trim() || undefined,
+              email: customerData.email.trim() || undefined,
+              address: customerData.address.trim() || undefined,
+            }),
           });
           customerId = cRes.id;
         } catch (cErr: any) {
@@ -251,7 +395,16 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
           const vRes = await apiRequest<any>('/vehicles', {
             method: 'POST',
             body: JSON.stringify({
-              ...vehicleData,
+              registration_number: vehicleData.registration_number.trim(),
+              make: vehicleData.make.trim(),
+              model: vehicleData.model.trim(),
+              variant: vehicleData.variant.trim() || undefined,
+              fuel_type: vehicleData.fuel_type,
+              current_odometer: Number(vehicleData.odometer) || 0,
+              vin: vehicleData.vin.trim() || undefined,
+              engine_number: vehicleData.engine_number.trim() || undefined,
+              year: vehicleData.year ? Number(vehicleData.year) : undefined,
+              colour: vehicleData.colour.trim() || undefined,
               customer_id: customerId,
             }),
           });
@@ -273,8 +426,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
           customer_id: customerId,
           vehicle_id: vehicleId,
           odometer: Number(vehicleData.odometer),
-          fuel_level: '1/2',
+          fuel_level: vehicleData.fuel_level,
           complaints: complaints,
+          notes: jobCardNotes.trim() || undefined,
+          assigned_to: assignedTo ? Number(assignedTo) : undefined,
+          promised_at: promisedAt ? new Date(promisedAt).toISOString() : undefined,
         }),
       });
       const jcId = jcRes.id;
@@ -359,8 +515,14 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-workshop-border overflow-hidden my-6 max-h-[92vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/60 backdrop-blur-sm p-3 sm:p-4 md:p-6 flex flex-col items-center justify-start sm:justify-center cursor-pointer"
+      onClick={handleRequestClose}
+    >
+      <div
+        className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-workshop-border overflow-hidden my-auto shrink-0 flex flex-col max-h-[92vh] cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header with 6-Step Indicator */}
         <div className="px-6 py-4 border-b border-workshop-border bg-[#F8FAFC] flex items-center justify-between shrink-0">
@@ -372,7 +534,12 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
               Guided 6-step workshop intake flow
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-200 text-workshop-muted">
+          <button
+            type="button"
+            onClick={handleRequestClose}
+            className="p-1.5 rounded-lg hover:bg-gray-200 text-workshop-muted transition cursor-pointer"
+            title="Close (Esc)"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -409,7 +576,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
         </div>
 
         {/* Body content (scrollable) */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+        <div className="p-6 overflow-y-auto overscroll-contain flex-1 space-y-6">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
@@ -419,6 +586,38 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
           {/* STEP 1: Customer & Vehicle */}
           {step === 1 && (
             <div className="space-y-6">
+              {/* Saved Draft Recovery Banner */}
+              {savedDraftAvailable && (
+                <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-brand shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-brand-deep">Unsubmitted Draft Found</div>
+                      <div className="text-[11px] text-workshop-muted">
+                        An unfinished job card was saved from {new Date(savedDraftAvailable.timestamp).toLocaleString('en-IN')}.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleDiscardSavedDraft}
+                      className="px-2.5 py-1 text-xs text-gray-500 hover:text-gray-800 font-medium cursor-pointer"
+                    >
+                      Discard Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRestoreSavedDraft}
+                      className="px-3 py-1 bg-brand hover:bg-brand-deep text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs"
+                    >
+                      Restore Draft
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Returning Vehicle Quick Search */}
               <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-200/80 flex flex-col sm:flex-row gap-3 items-center justify-between">
                 <div className="text-sm">
@@ -456,7 +655,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 <h4 className="font-bold text-sm text-brand-deep mb-3 flex items-center gap-2">
                   <User className="w-4 h-4 text-brand" /> Customer Details
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-workshop-text mb-1">Customer Name *</label>
                     <input
@@ -464,6 +663,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                       required
                       value={customerData.name}
                       onChange={(e) => setCustomerData({ ...customerData, name: e.target.value })}
+                      placeholder="e.g. Ramesh Kumar"
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
                     />
                   </div>
@@ -474,15 +674,37 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                       required
                       value={customerData.phone}
                       onChange={(e) => setCustomerData({ ...customerData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+                      placeholder="e.g. 9876543210"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Alternate Phone</label>
+                    <input
+                      type="text"
+                      value={customerData.alt_phone}
+                      onChange={(e) => setCustomerData({ ...customerData, alt_phone: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={customerData.email}
+                      onChange={(e) => setCustomerData({ ...customerData, email: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-4">
                     <label className="block text-xs font-semibold text-workshop-text mb-1">Address</label>
                     <input
                       type="text"
                       value={customerData.address}
                       onChange={(e) => setCustomerData({ ...customerData, address: e.target.value })}
+                      placeholder="Street, Area, City (Optional)"
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
                     />
                   </div>
@@ -502,6 +724,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                       required
                       value={vehicleData.registration_number}
                       onChange={(e) => setVehicleData({ ...vehicleData, registration_number: e.target.value })}
+                      placeholder="e.g. KA01AB1234"
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono uppercase"
                     />
                   </div>
@@ -524,6 +747,16 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                       value={vehicleData.model}
                       onChange={(e) => setVehicleData({ ...vehicleData, model: e.target.value })}
                       placeholder="e.g. Creta"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Variant (Optional)</label>
+                    <input
+                      type="text"
+                      value={vehicleData.variant}
+                      onChange={(e) => setVehicleData({ ...vehicleData, variant: e.target.value })}
+                      placeholder="e.g. SX (O), VXi, Sportz"
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
                     />
                   </div>
@@ -552,12 +785,111 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Fuel Level at Intake</label>
+                    <div className="flex items-center gap-1 bg-workshop-bg rounded-lg p-2 border border-workshop-border">
+                      <span className="text-[10px] font-bold text-workshop-red mr-1">E</span>
+                      {['E', '1/4', '1/2', '3/4', 'F'].map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setVehicleData({ ...vehicleData, fuel_level: level })}
+                          className={`flex-1 py-1.5 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                            vehicleData.fuel_level === level
+                              ? level === 'E'
+                                ? 'bg-workshop-red text-white shadow-sm'
+                                : level === 'F'
+                                  ? 'bg-workshop-green text-white shadow-sm'
+                                  : 'bg-brand text-white shadow-sm'
+                              : 'bg-white text-workshop-muted hover:bg-gray-100 border border-gray-200'
+                          }`}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                      <span className="text-[10px] font-bold text-workshop-green ml-1">F</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Year of Manufacture</label>
+                    <input
+                      type="number"
+                      value={vehicleData.year}
+                      onChange={(e) => setVehicleData({ ...vehicleData, year: e.target.value })}
+                      placeholder="e.g. 2021"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Vehicle Colour</label>
+                    <input
+                      type="text"
+                      value={vehicleData.colour}
+                      onChange={(e) => setVehicleData({ ...vehicleData, colour: e.target.value })}
+                      placeholder="e.g. Polar White, Phantom Black"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-semibold text-workshop-text mb-1">VIN / Chassis # (Optional)</label>
                     <input
                       type="text"
                       value={vehicleData.vin}
                       onChange={(e) => setVehicleData({ ...vehicleData, vin: e.target.value })}
-                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                      placeholder="e.g. MALBA51..."
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono uppercase"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Engine Number (Optional)</label>
+                    <input
+                      type="text"
+                      value={vehicleData.engine_number}
+                      onChange={(e) => setVehicleData({ ...vehicleData, engine_number: e.target.value })}
+                      placeholder="e.g. G4LA123456"
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono uppercase"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Job Card Intake & Assignment */}
+              <div className="pt-2 border-t border-workshop-border">
+                <h4 className="font-bold text-sm text-brand-deep mb-3 flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-brand" /> Intake Details & Delivery
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Promised Delivery Date & Time (Optional)</label>
+                    <input
+                      type="datetime-local"
+                      value={promisedAt}
+                      onChange={(e) => setPromisedAt(e.target.value)}
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Assign Technician (Optional)</label>
+                    <select
+                      value={assignedTo}
+                      onChange={(e) => setAssignedTo(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm bg-white"
+                    >
+                      <option value="">Unassigned</option>
+                      {staffList.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.full_name} ({s.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-workshop-text mb-1">Intake Notes / Instructions (Optional)</label>
+                    <textarea
+                      rows={2}
+                      value={jobCardNotes}
+                      onChange={(e) => setJobCardNotes(e.target.value)}
+                      placeholder="Customer special requests, vehicle condition on intake, existing scratches or dents, items in boot, etc."
+                      className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm resize-none"
                     />
                   </div>
                 </div>
@@ -814,7 +1146,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 </table>
                 <button
                   type="button"
-                  onClick={() => setLabourLines([...labourLines, { description: 'Custom Labour', quantity: 1, unit_price: 50000 }])}
+                  onClick={() => setLabourLines([...labourLines, { description: '', quantity: 1, unit_price: 0 }])}
                   className="mt-2 text-xs font-semibold text-brand flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" /> + Add Custom Labour Line
@@ -923,7 +1255,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 </table>
                 <button
                   type="button"
-                  onClick={() => setPartLines([...partLines, { description: 'Custom Part', unit: 'pcs', quantity: 1, unit_price: 30000 }])}
+                  onClick={() => setPartLines([...partLines, { description: '', unit: 'pcs', quantity: 1, unit_price: 0 }])}
                   className="mt-2 text-xs font-semibold text-brand flex items-center gap-1"
                 >
                   <Plus className="w-3.5 h-3.5" /> + Add Custom Part
@@ -1191,6 +1523,48 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
         )}
 
       </div>
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardModal && (
+        <div
+          className="fixed inset-0 z-60 overflow-y-auto overscroll-contain bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setShowDiscardModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-workshop-border p-6 space-y-4 my-auto shrink-0 animate-in zoom-in-95 duration-150 cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 mb-1">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-display font-bold text-lg text-workshop-text">
+                Discard Unsaved Job Card?
+              </h4>
+              <p className="text-xs text-workshop-muted mt-1.5 leading-relaxed">
+                You have active, unsubmitted intake data for this vehicle. If you exit now, entered complaints, inspections, and estimate lines will not be saved.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-workshop-border-soft">
+              <button
+                type="button"
+                onClick={() => setShowDiscardModal(false)}
+                className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-50 transition cursor-pointer"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDiscard}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition cursor-pointer shadow-xs"
+              >
+                Discard &amp; Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

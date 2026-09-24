@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, User, Car, FileText, Phone, MapPin, IndianRupee } from 'lucide-react';
+import { ArrowLeft, User, Car, FileText, Phone, MapPin, IndianRupee, Mail } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { formatINR } from '../lib/formatters';
 
@@ -51,8 +51,10 @@ export const CustomerDetailPage: React.FC<Props> = ({
         </button>
         <div>
           <h2 className="font-display font-bold text-2xl text-workshop-text">{customer.name}</h2>
-          <div className="flex items-center gap-4 text-xs text-workshop-muted mt-1 font-mono">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-workshop-muted mt-1 font-mono">
             <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-brand" /> {customer.phone}</span>
+            {customer.alt_phone && <span>Alt: {customer.alt_phone}</span>}
+            {customer.email && <span className="flex items-center gap-1 font-sans"><Mail className="w-3 h-3 text-brand" /> {customer.email}</span>}
             {customer.address && <span className="flex items-center gap-1 font-sans"><MapPin className="w-3 h-3 text-brand" /> {customer.address}</span>}
           </div>
         </div>

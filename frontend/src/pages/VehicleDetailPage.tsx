@@ -54,10 +54,20 @@ export const VehicleDetailPage: React.FC<Props> = ({
             <span className="font-mono font-bold text-xl bg-gray-100 px-3 py-1 rounded border border-gray-300">
               {vehicle.registration_number}
             </span>
-            <h2 className="font-display font-bold text-2xl text-workshop-text">{vehicle.make} {vehicle.model}</h2>
+            <h2 className="font-display font-bold text-2xl text-workshop-text">
+              {vehicle.make} {vehicle.model} {vehicle.variant && <span className="text-lg font-normal text-workshop-muted">({vehicle.variant})</span>}
+            </h2>
           </div>
-          <div className="text-xs text-workshop-muted mt-1">
-            Owner: <span className="font-semibold text-workshop-text">{owner?.name}</span> ({owner?.phone}) &bull; Current Odometer: <span className="font-mono font-semibold">{vehicle.current_odometer.toLocaleString('en-IN')} km</span>
+          <div className="text-xs text-workshop-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>Owner: <span className="font-semibold text-workshop-text">{owner?.name}</span> ({owner?.phone})</span>
+            <span>&bull;</span>
+            <span>Fuel: <span className="font-semibold text-workshop-text">{vehicle.fuel_type}</span></span>
+            {vehicle.year && <><span>&bull;</span><span>Year: <span className="font-semibold text-workshop-text">{vehicle.year}</span></span></>}
+            {vehicle.colour && <><span>&bull;</span><span>Colour: <span className="font-semibold text-workshop-text">{vehicle.colour}</span></span></>}
+            <span>&bull;</span>
+            <span>Odometer: <span className="font-mono font-semibold">{vehicle.current_odometer.toLocaleString('en-IN')} km</span></span>
+            {vehicle.vin && <><span>&bull;</span><span className="font-mono">VIN: {vehicle.vin}</span></>}
+            {vehicle.engine_number && <><span>&bull;</span><span className="font-mono">Engine: {vehicle.engine_number}</span></>}
           </div>
         </div>
       </div>

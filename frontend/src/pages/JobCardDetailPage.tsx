@@ -12,7 +12,8 @@ import {
   Package,
   History,
   Check,
-  X
+  X,
+  CalendarClock
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
@@ -166,6 +167,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
           <div className="text-xs text-workshop-muted space-y-1">
             <div>Phone: <span className="font-mono font-semibold text-workshop-text">{data.customer.phone}</span></div>
             {data.customer.alt_phone && <div>Alt Phone: <span className="font-mono">{data.customer.alt_phone}</span></div>}
+            {data.customer.email && <div>Email: <span className="font-mono">{data.customer.email}</span></div>}
             {data.customer.address && <div>Address: {data.customer.address}</div>}
           </div>
         </div>
@@ -180,16 +182,53 @@ export const JobCardDetailPage: React.FC<Props> = ({
               {data.vehicle.registration_number}
             </span>
             <span className="font-bold text-base text-workshop-text">
-              {data.vehicle.make} {data.vehicle.model}
+              {data.vehicle.make} {data.vehicle.model} {data.vehicle.variant && <span className="text-sm font-normal text-workshop-muted">({data.vehicle.variant})</span>}
             </span>
           </div>
           <div className="text-xs text-workshop-muted space-y-1">
-            <div>Fuel: <span className="font-semibold text-workshop-text">{data.vehicle.fuel_type}</span> &bull; Fuel Level: <span className="font-semibold text-workshop-text">{data.fuel_level || 'N/A'}</span></div>
+            <div className="flex flex-wrap items-center gap-x-2">
+              <span>Fuel: <span className="font-semibold text-workshop-text">{data.vehicle.fuel_type}</span></span>
+              <span>&bull;</span>
+              <span>Fuel Level: <span className="font-semibold text-workshop-text">{data.fuel_level || 'N/A'}</span></span>
+              {data.vehicle.year && <><span>&bull;</span><span>Year: <span className="font-semibold text-workshop-text">{data.vehicle.year}</span></span></>}
+              {data.vehicle.colour && <><span>&bull;</span><span>Colour: <span className="font-semibold text-workshop-text">{data.vehicle.colour}</span></span></>}
+            </div>
             {data.vehicle.vin && <div>VIN: <span className="font-mono">{data.vehicle.vin}</span></div>}
+            {data.vehicle.engine_number && <div>Engine: <span className="font-mono">{data.vehicle.engine_number}</span></div>}
           </div>
         </div>
 
       </div>
+
+      {/* Intake Notes, Delivery Time, and Assigned Technician */}
+      {(data.notes || data.promised_at || data.assigned_to_name) && (
+        <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-200/80 text-xs text-blue-950 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-xs uppercase tracking-wider text-brand-deep flex items-center gap-1.5">
+              <CalendarClock className="w-4 h-4 text-brand" /> Intake & Assignment
+            </span>
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              {data.assigned_to_name && (
+                <div>
+                  <span className="text-workshop-muted">Technician:</span>{' '}
+                  <span className="font-semibold text-workshop-text">{data.assigned_to_name}</span>
+                </div>
+              )}
+              {data.promised_at && (
+                <div>
+                  <span className="text-workshop-muted">Promised Delivery:</span>{' '}
+                  <span className="font-semibold text-brand font-mono">{data.promised_at}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          {data.notes && (
+            <div className="pt-1.5 border-t border-blue-100 text-xs text-workshop-text">
+              <span className="font-semibold text-workshop-muted">Intake Notes:</span> {data.notes}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Inline Previous Service Summary (FR-HIS-003) */}
       {data.last_service && (
