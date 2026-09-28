@@ -94,7 +94,7 @@ export const Sidebar: React.FC<Props> = ({
         {/* Footer info in desktop full view */}
         <div className="hidden lg:block p-4 border-t border-workshop-border bg-gray-50/50">
           <div className="text-[11px] text-workshop-muted leading-relaxed">
-            <div className="font-semibold text-workshop-text">Pushpa Raj v1.0</div>
+            <div className="font-semibold text-workshop-text">Workshop Manager v1.0</div>
             <div>Offline Single-Computer</div>
           </div>
         </div>

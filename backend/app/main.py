@@ -76,6 +76,10 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+@app.get("/")
+def home():
+    return {"message": "Welcome to the Service Center Management API"}
+
 @app.get("/health")
 def healthcheck():
-    return {"status": "ok", "app": "Pushpa Raj Automotive Services", "offline_ready": True}
+    return {"status": "ok", "app": "Service Center Management System", "offline_ready": True}
