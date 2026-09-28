@@ -19,6 +19,8 @@ interface DashboardData {
     in_service: number;
     ready_for_delivery: number;
     todays_revenue_paise: number;
+    total_revenue_paise?: number;
+    total_collections_paise?: number;
   };
   recent_job_cards: Array<{
     id: number;
@@ -166,16 +168,33 @@ export const DashboardPage: React.FC<Props> = ({
           <p className="text-[11px] text-workshop-muted mt-2">Work completed; awaiting delivery</p>
         </div>
 
-        {/* Tile 4: Today's Revenue */}
-        <div className="p-5 bg-white rounded-xl border border-workshop-border shadow-2xs">
+        {/* Tile 4: Today's Revenue & Total Revenue */}
+        <div
+          onClick={() => onNavigate('reports')}
+          className="p-5 bg-white rounded-xl border border-workshop-border shadow-2xs cursor-pointer hover:border-brand/40 transition group"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-workshop-muted uppercase tracking-wider">Today's Revenue</span>
-            <span className="p-1.5 bg-green-50 text-green-700 rounded-md"><TrendingUp className="w-4 h-4" /></span>
+            <span className="p-1.5 bg-green-50 text-green-700 rounded-md group-hover:bg-brand-light group-hover:text-brand transition">
+              <TrendingUp className="w-4 h-4" />
+            </span>
           </div>
           <div className="mt-3 font-display font-bold text-2xl md:text-3xl text-workshop-text leading-none tracking-tight">
             {data ? formatINR(data.tiles.todays_revenue_paise) : '-'}
           </div>
-          <p className="text-[11px] text-workshop-muted mt-2">Cash &amp; digital payments received</p>
+          <p className="text-[11px] text-workshop-muted mt-2">Cash &amp; digital payments received today</p>
+
+          <div className="mt-3 pt-3 border-t border-workshop-border-soft flex items-center justify-between text-xs">
+            <div>
+              <span className="text-[11px] text-workshop-muted font-medium">All-Time Total: </span>
+              <span className="font-mono font-bold text-brand-deep">
+                {data && data.tiles.total_revenue_paise != null ? formatINR(data.tiles.total_revenue_paise) : '-'}
+              </span>
+            </div>
+            <span className="text-brand font-semibold group-hover:underline flex items-center gap-0.5 text-[11px]">
+              Breakdown &rarr;
+            </span>
+          </div>
         </div>
 
       </div>

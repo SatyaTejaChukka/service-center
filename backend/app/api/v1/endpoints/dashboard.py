@@ -5,7 +5,7 @@ from sqlalchemy import func
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import JobCard, Payment, User
+from app.models import JobCard, Payment, User, Invoice
 
 router = APIRouter()
 
@@ -33,6 +33,12 @@ def get_dashboard_summary(
     todays_revenue_paise = sum(p.amount for p in today_payments if not p.is_reversal) - sum(p.amount for p in today_payments if p.is_reversal)
     todays_revenue_paise = max(0, todays_revenue_paise)
 
+    # 4b. All-Time Revenue (accrual / finalized grand total) & Net Collections
+    finalized_invoices = db.query(Invoice).filter(Invoice.status == "FINALIZED").all()
+    total_revenue_paise = sum(i.grand_total for i in finalized_invoices)
+    all_payments = db.query(Payment).all()
+    total_collections_paise = max(0, sum(p.amount for p in all_payments if not p.is_reversal) - sum(p.amount for p in all_payments if p.is_reversal))
+
     # 5. Recent Job Cards (up to 8)
     recent_jobs = db.query(JobCard).order_by(JobCard.created_at.desc()).limit(8).all()
     recent_jobs_list = [
@@ -57,7 +63,9 @@ def get_dashboard_summary(
             "todays_jobs": todays_jobs_count,
             "in_service": in_service_count,
             "ready_for_delivery": ready_count,
-            "todays_revenue_paise": todays_revenue_paise
+            "todays_revenue_paise": todays_revenue_paise,
+            "total_revenue_paise": total_revenue_paise,
+            "total_collections_paise": total_collections_paise
         },
         "recent_job_cards": recent_jobs_list,
         "widgets": {
