@@ -87,6 +87,15 @@ export const SettingsPage: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'USERS') {
+      setNewUsername('');
+      setNewPassword('');
+      setNewFullName('');
+      setNewRole('STAFF');
+    }
+  }, [activeTab]);
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -140,12 +149,13 @@ export const SettingsPage: React.FC = () => {
           username: newUsername.trim(),
           password: newPassword,
           full_name: newFullName.trim(),
-          role: newRole,
+          role: 'STAFF',
         }),
       });
       setNewUsername('');
       setNewPassword('');
       setNewFullName('');
+      setNewRole('STAFF');
       fetchUsers();
     } catch (err: any) {
       alert(err.message || 'Failed to create user');
@@ -463,12 +473,23 @@ export const SettingsPage: React.FC = () => {
           {/* Create User Form */}
           <div className="bg-white p-5 rounded-xl border border-workshop-border shadow-2xs space-y-4 h-fit">
             <h4 className="font-bold text-sm text-workshop-text">+ Create Staff Account</h4>
-            <form onSubmit={handleCreateUser} className="space-y-3">
+            <form onSubmit={handleCreateUser} autoComplete="off" autoCapitalize="none" className="space-y-3">
+              {/* Browser autofill suppression decoy fields */}
+              <input type="text" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="off" />
+              <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" autoComplete="new-password" />
+
               <div>
                 <label className="block text-xs font-semibold text-workshop-text mb-1">Username *</label>
                 <input
                   type="text"
                   required
+                  name="create_staff_username"
+                  id="create_staff_username"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="Enter username"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   className="w-full px-3 py-1.5 border border-workshop-border rounded-lg text-sm"
@@ -479,6 +500,12 @@ export const SettingsPage: React.FC = () => {
                 <input
                   type="text"
                   required
+                  name="create_staff_fullname"
+                  id="create_staff_fullname"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="e.g. Ramesh Kumar"
                   value={newFullName}
                   onChange={(e) => setNewFullName(e.target.value)}
                   className="w-full px-3 py-1.5 border border-workshop-border rounded-lg text-sm"
@@ -489,6 +516,10 @@ export const SettingsPage: React.FC = () => {
                 <input
                   type="password"
                   required
+                  name="create_staff_password"
+                  id="create_staff_password"
+                  autoComplete="new-password"
+                  placeholder="Create temporary password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full px-3 py-1.5 border border-workshop-border rounded-lg text-sm"
@@ -497,13 +528,15 @@ export const SettingsPage: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-workshop-text mb-1">Role *</label>
                 <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-workshop-border rounded-lg text-xs bg-white"
+                  value="STAFF"
+                  disabled
+                  className="w-full px-3 py-1.5 border border-workshop-border rounded-lg text-xs bg-gray-50 text-workshop-text font-medium cursor-not-allowed"
                 >
                   <option value="STAFF">Service Staff (Day-to-day operations)</option>
-                  <option value="ADMIN">Administrator (Full settings &amp; void access)</option>
                 </select>
+                <p className="text-[11px] text-workshop-muted mt-1">
+                  Default role is set to Staff for management accounts.
+                </p>
               </div>
               <button
                 type="submit"
