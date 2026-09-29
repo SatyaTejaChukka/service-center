@@ -64,6 +64,7 @@ class CustomerBase(BaseModel):
     alt_phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    gstin: Optional[str] = None
     notes: Optional[str] = None
 
 class CustomerCreate(CustomerBase):
@@ -75,6 +76,7 @@ class CustomerUpdate(BaseModel):
     alt_phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    gstin: Optional[str] = None
     notes: Optional[str] = None
 
 class CustomerResponse(CustomerBase):
@@ -149,6 +151,9 @@ class LabourItemCreate(BaseModel):
     description: str
     quantity: float = 1.0
     unit_price: int  # in paise
+    cost_price: Optional[int] = 0 # in paise
+    sac_code: Optional[str] = "998729"
+    gst_rate: Optional[float] = 18.0
     status: str = "RECOMMENDED" # RECOMMENDED, APPROVED, REJECTED, DONE
     catalog_id: Optional[int] = None
 
@@ -164,6 +169,10 @@ class PartItemCreate(BaseModel):
     unit: str = "pcs"
     quantity: float = 1.0
     unit_price: int  # in paise
+    cost_price: Optional[int] = 0 # in paise (purchase cost)
+    purchase_cost: Optional[int] = 0 # alias in paise
+    hsn_code: Optional[str] = "8708"
+    gst_rate: Optional[float] = 18.0
     status: str = "RECOMMENDED" # RECOMMENDED, APPROVED, REJECTED, USED
     catalog_id: Optional[int] = None
 
@@ -248,9 +257,15 @@ class InvoiceSummaryResponse(BaseModel):
     labour_total: int
     other_charges_total: int
     discount: int
+    taxable_amount: Optional[int] = 0
+    cgst_amount: Optional[int] = 0
+    sgst_amount: Optional[int] = 0
+    igst_amount: Optional[int] = 0
     tax_total: int
     round_off: int
     grand_total: int
+    total_cost: Optional[int] = 0
+    gross_profit: Optional[int] = 0
     amount_paid: int
     balance_due: int
     payment_status: str
@@ -266,6 +281,9 @@ class LabourCatalogItem(BaseModel):
     id: int
     name: str
     default_rate: int
+    cost_price: Optional[int] = 0
+    sac_code: Optional[str] = "998729"
+    gst_rate: Optional[float] = 18.0
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -276,6 +294,10 @@ class PartsCatalogItem(BaseModel):
     part_number: Optional[str] = None
     unit: str
     default_price: int
+    cost_price: Optional[int] = 0
+    purchase_cost: Optional[int] = 0
+    hsn_code: Optional[str] = "8708"
+    gst_rate: Optional[float] = 18.0
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)

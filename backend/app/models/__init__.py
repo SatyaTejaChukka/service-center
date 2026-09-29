@@ -35,6 +35,7 @@ class Customer(Base, TimestampMixin):
     alt_phone = Column(String(20), nullable=True)
     email = Column(String(100), nullable=True)
     address = Column(Text, nullable=True)
+    gstin = Column(String(20), nullable=True, index=True) # Customer GSTIN for B2B tax invoicing
     notes = Column(Text, nullable=True)
     is_archived = Column(Boolean, default=False, nullable=False)
 
@@ -146,6 +147,9 @@ class LabourItem(Base, TimestampMixin):
     quantity = Column(Float, default=1.0, nullable=False)
     unit_price = Column(Integer, default=0, nullable=False) # in paise
     total = Column(Integer, default=0, nullable=False) # in paise (qty * unit_price)
+    cost_price = Column(Integer, default=0, nullable=False) # in paise (technician payout/cost)
+    sac_code = Column(String(20), default="998729", nullable=True) # Service Accounting Code
+    gst_rate = Column(Integer, default=18, nullable=False) # Tax percentage
     status = Column(String(20), default="RECOMMENDED", nullable=False) # RECOMMENDED, APPROVED, REJECTED, DONE
 
     job_card = relationship("JobCard", back_populates="labour_items")
@@ -163,6 +167,9 @@ class PartItem(Base, TimestampMixin):
     quantity = Column(Float, default=1.0, nullable=False) # allows decimal e.g. 3.5
     unit_price = Column(Integer, default=0, nullable=False) # in paise
     total = Column(Integer, default=0, nullable=False) # in paise (qty * unit_price)
+    cost_price = Column(Integer, default=0, nullable=False) # in paise (purchase cost)
+    hsn_code = Column(String(20), default="8708", nullable=True) # Harmonized System of Nomenclature
+    gst_rate = Column(Integer, default=18, nullable=False) # Tax percentage
     status = Column(String(20), default="RECOMMENDED", nullable=False) # RECOMMENDED, APPROVED, REJECTED, USED
 
     job_card = relationship("JobCard", back_populates="parts_items")
@@ -195,7 +202,13 @@ class Invoice(Base, TimestampMixin):
     other_charges_total = Column(Integer, default=0, nullable=False) # in paise
     discount = Column(Integer, default=0, nullable=False) # in paise
     discount_reason = Column(Text, nullable=True)
-    tax_total = Column(Integer, default=0, nullable=False) # in paise (reserved for GST)
+    tax_total = Column(Integer, default=0, nullable=False) # in paise (GST)
+    taxable_amount = Column(Integer, default=0, nullable=False) # in paise
+    cgst_amount = Column(Integer, default=0, nullable=False) # in paise
+    sgst_amount = Column(Integer, default=0, nullable=False) # in paise
+    igst_amount = Column(Integer, default=0, nullable=False) # in paise
+    total_cost = Column(Integer, default=0, nullable=False) # in paise (parts cost + labour cost)
+    gross_profit = Column(Integer, default=0, nullable=False) # in paise (taxable - total_cost)
     round_off = Column(Integer, default=0, nullable=False) # in paise
     grand_total = Column(Integer, default=0, nullable=False) # in paise
     payment_status = Column(String(20), default="UNPAID", nullable=False, index=True) # UNPAID, PARTIALLY_PAID, PAID
@@ -247,6 +260,9 @@ class LabourCatalog(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False, unique=True)
     default_rate = Column(Integer, default=0, nullable=False) # in paise
+    cost_price = Column(Integer, default=0, nullable=False) # in paise (technician payout/cost)
+    sac_code = Column(String(20), default="998729", nullable=True) # Service Accounting Code
+    gst_rate = Column(Integer, default=18, nullable=False) # Tax percentage
     is_active = Column(Boolean, default=True, nullable=False)
 
 
@@ -258,7 +274,18 @@ class PartsCatalog(Base, TimestampMixin):
     part_number = Column(String(50), nullable=True, index=True)
     unit = Column(String(20), default="pcs", nullable=False)
     default_price = Column(Integer, default=0, nullable=False) # in paise
+    purchase_cost = Column(Integer, default=0, nullable=False) # in paise (cost price)
+    hsn_code = Column(String(20), default="8708", nullable=True) # HSN Code
+    gst_rate = Column(Integer, default=18, nullable=False) # Tax percentage
     is_active = Column(Boolean, default=True, nullable=False)
+
+    @property
+    def cost_price(self):
+        return self.purchase_cost
+
+    @cost_price.setter
+    def cost_price(self, val):
+        self.purchase_cost = val
 
 
 class Setting(Base):
