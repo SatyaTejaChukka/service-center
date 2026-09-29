@@ -34,6 +34,7 @@ export const App: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [reportsTab, setReportsTab] = useState<'REVENUE' | 'CALENDAR' | 'DAILY' | 'RECEIVABLES'>('REVENUE');
   const [navHistory, setNavHistory] = useState<NavHistoryItem[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -94,6 +95,18 @@ export const App: React.FC = () => {
     } else if (page === 'invoices') {
       setSelectedInvoiceId(id ?? null);
       setActivePage('invoices');
+    } else if (page === 'reports_calendar') {
+      setReportsTab('CALENDAR');
+      setActivePage('reports');
+    } else if (page === 'reports_revenue') {
+      setReportsTab('REVENUE');
+      setActivePage('reports');
+    } else if (page === 'reports') {
+      if (id === 1) setReportsTab('DAILY');
+      else if (id === 2) setReportsTab('RECEIVABLES');
+      else if (id === 3) setReportsTab('CALENDAR');
+      else setReportsTab('REVENUE');
+      setActivePage('reports');
     } else {
       setActivePage(page);
     }
@@ -134,7 +147,7 @@ export const App: React.FC = () => {
         <div className="text-center space-y-3">
           <div className="w-10 h-10 border-3 border-brand border-t-transparent rounded-full animate-spin mx-auto" />
           <div className="font-display font-bold text-xl text-workshop-text">
-            PUSHPA RAJ AUTOMOTIVE
+            WORKSHOP MANAGEMENT SYSTEM
           </div>
           <p className="text-xs text-workshop-muted">Loading local workshop database...</p>
         </div>
@@ -245,7 +258,12 @@ export const App: React.FC = () => {
             />
           )}
 
-          {activePage === 'reports' && <ReportsPage />}
+          {activePage === 'reports' && (
+            <ReportsPage
+              initialTab={reportsTab}
+              onNavigate={(page, id) => navigateTo(page, id)}
+            />
+          )}
 
           {activePage === 'settings' && <SettingsPage />}
         </main>
