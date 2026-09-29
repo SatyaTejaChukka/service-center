@@ -142,3 +142,51 @@ def test_draft_invoice_estimate_totals():
     assert res_final.grand_total == 0
     assert res_final.estimated_grand_total == 225000
 
+def test_gst_intra_and_interstate():
+    """
+    Verifies that GST splits properly into CGST + SGST for intra-state
+    and into IGST for inter-state transactions.
+    """
+    parts = [
+        LineItemCalc(quantity=2.0, unit_price=100000, cost_price=70000, gst_rate=18, status="APPROVED"), # ₹2,000, cost ₹1,400
+    ]
+    labour = [
+        LineItemCalc(quantity=1.0, unit_price=100000, cost_price=40000, gst_rate=18, status="APPROVED"), # ₹1,000, cost ₹400
+    ]
+    # Total taxable = ₹3,000 (300,000 paise). 18% GST = ₹540 (54,000 paise).
+
+    # 1. Intra-state (CGST 9% + SGST 9%)
+    res_intra = calculate_invoice_totals(parts, labour, [], is_interstate=False)
+    assert res_intra.taxable_amount == 300000
+    assert res_intra.tax_total == 54000
+    assert res_intra.cgst_amount == 27000  # ₹270
+    assert res_intra.sgst_amount == 27000  # ₹270
+    assert res_intra.igst_amount == 0
+    assert res_intra.grand_total == 354000  # ₹3,540
+
+    # 2. Inter-state (IGST 18%)
+    res_inter = calculate_invoice_totals(parts, labour, [], is_interstate=True)
+    assert res_inter.taxable_amount == 300000
+    assert res_inter.tax_total == 54000
+    assert res_inter.cgst_amount == 0
+    assert res_inter.sgst_amount == 0
+    assert res_inter.igst_amount == 54000  # ₹540
+    assert res_inter.grand_total == 354000
+
+def test_profit_margin_calculations():
+    """
+    Verifies gross cost, gross profit, and margin % calculations.
+    """
+    parts = [
+        LineItemCalc(quantity=1.0, unit_price=200000, cost_price=120000, status="APPROVED"), # Sell ₹2,000, Cost ₹1,200
+    ]
+    labour = [
+        LineItemCalc(quantity=1.0, unit_price=100000, cost_price=30000, status="APPROVED"),  # Sell ₹1,000, Cost ₹300
+    ]
+    # Revenue = ₹3,000. Total Cost = ₹1,500. Gross Profit = ₹1,500 (50.0% margin).
+    res = calculate_invoice_totals(parts, labour, [])
+    assert res.total_cost == 150000
+    assert res.gross_profit == 150000
+    assert res.profit_margin_percent == 50.0
+
+

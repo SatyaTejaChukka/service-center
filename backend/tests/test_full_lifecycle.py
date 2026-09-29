@@ -131,7 +131,8 @@ def test_full_workshop_lifecycle():
         assert inv_detail["labour_total"] == 150000
         assert inv_detail["other_charges_total"] == 20000
         assert inv_detail["discount"] == 10000
-        assert inv_detail["grand_total"] == 740000  # Exact ₹7,400.00!
+        assert inv_detail["tax_total"] == 131400
+        assert inv_detail["grand_total"] == 871400  # Includes GST
 
         # 10. Finalise Invoice
         res_fin = client.post(f"/api/v1/invoices/{inv_id}/finalize", headers=headers)
@@ -145,9 +146,9 @@ def test_full_workshop_lifecycle():
         assert res_pdf.headers["content-type"] == "application/pdf"
         assert len(res_pdf.content) > 1000
 
-        # 12. Record Payment (UPI ₹7,400)
+        # 12. Record Payment (UPI)
         pay_res = client.post(f"/api/v1/invoices/{inv_id}/payments", json={
-            "amount": 740000,
+            "amount": 871400,
             "method": "UPI",
             "reference": "UPI987654321012"
         }, headers=headers)
@@ -182,11 +183,11 @@ def test_full_workshop_lifecycle():
         # Verify invoice payment_status is back to UNPAID
         res_rev_inv = client.get(f"/api/v1/invoices/{inv_id}", headers=headers)
         assert res_rev_inv.json()["payment_status"] == "UNPAID"
-        assert res_rev_inv.json()["balance_due"] == 740000
+        assert res_rev_inv.json()["balance_due"] == 871400
 
         # Settle invoice again with Cash
         repay_res = client.post(f"/api/v1/invoices/{inv_id}/payments", json={
-            "amount": 740000, "method": "CASH", "reference": "REC-001"
+            "amount": 871400, "method": "CASH", "reference": "REC-001"
         }, headers=headers)
         assert repay_res.status_code == 200
 
@@ -206,7 +207,7 @@ def test_full_workshop_lifecycle():
         assert res_dash.status_code == 200
         dash_data = res_dash.json()
         assert dash_data["tiles"]["todays_jobs"] >= 1
-        assert dash_data["tiles"]["todays_revenue_paise"] == 740000
+        assert dash_data["tiles"]["todays_revenue_paise"] == 871400
 
         # 16. Online Backup Test
         res_backup = client.post("/api/v1/backup/now", headers=headers)

@@ -158,6 +158,8 @@ def generate_invoice_pdf(
     cust = jc.customer if jc else None
     veh = jc.vehicle if jc else None
 
+    cust_gstin_str = f"<br/><b>GSTIN:</b> {cust.gstin}" if (cust and cust.gstin) else "<br/><b>Type:</b> Consumer (B2C)"
+
     meta_data = [
         [
             Paragraph(f"<b>{'Invoice No:' if invoice.status == 'FINALIZED' else 'Document:'}</b> {invoice.invoice_number or 'DRAFT ESTIMATE'}", normal_style),
@@ -168,7 +170,7 @@ def generate_invoice_pdf(
             Paragraph(f"<b>Status:</b> {invoice.status}", right_bold)
         ],
         [
-            Paragraph(f"<b>Customer:</b> {cust.name if cust else ''} &bull; {cust.phone if cust else ''}", normal_style),
+            Paragraph(f"<b>Customer:</b> {cust.name if cust else ''} &bull; {cust.phone if cust else ''}{cust_gstin_str}", normal_style),
             Paragraph(f"<b>Vehicle:</b> {veh.make if veh else ''} {veh.model if veh else ''}", right_style)
         ],
         [
@@ -196,7 +198,14 @@ def generate_invoice_pdf(
         parts_header = "PARTS / MATERIALS" if invoice.status == "FINALIZED" else "ESTIMATED PARTS / MATERIALS"
         story.append(Paragraph(f"<b>{parts_header}</b>", bold_style))
         parts_data = [
-            [Paragraph("<b>#</b>", bold_style), Paragraph("<b>Description</b>", bold_style), Paragraph("<b>Qty</b>", right_bold), Paragraph("<b>Rate</b>", right_bold), Paragraph("<b>Amount</b>", right_bold)]
+            [
+                Paragraph("<b>#</b>", bold_style),
+                Paragraph("<b>Description</b>", bold_style),
+                Paragraph("<b>HSN</b>", normal_style),
+                Paragraph("<b>Qty</b>", right_bold),
+                Paragraph("<b>Rate</b>", right_bold),
+                Paragraph("<b>Amount</b>", right_bold)
+            ]
         ]
         for idx, p in enumerate(active_parts, start=1):
             desc = p.description
@@ -205,19 +214,22 @@ def generate_invoice_pdf(
             if invoice.status == "DRAFT" and p.status == "RECOMMENDED":
                 desc += " <i>[Recommended]</i>"
 
+            hsn = getattr(p, "hsn_code", None) or "8708"
+
             parts_data.append([
                 Paragraph(str(idx), normal_style),
                 Paragraph(desc, normal_style),
+                Paragraph(hsn, normal_style),
                 Paragraph(f"{p.quantity:g} {p.unit}", right_style),
                 Paragraph(format_inr(p.unit_price), right_style),
                 Paragraph(format_inr(p.total), right_style)
             ])
         parts_label = "Parts Total" if invoice.status == "FINALIZED" else "Parts Estimate"
         parts_data.append([
-            "", Paragraph(f"<b>{parts_label}</b>", bold_style), "", "", Paragraph(format_inr(invoice.parts_total), right_bold)
+            "", Paragraph(f"<b>{parts_label}</b>", bold_style), "", "", "", Paragraph(format_inr(invoice.parts_total), right_bold)
         ])
         
-        parts_table = Table(parts_data, colWidths=[8 * mm, 82 * mm, 25 * mm, 30 * mm, 35 * mm])
+        parts_table = Table(parts_data, colWidths=[7 * mm, 68 * mm, 20 * mm, 22 * mm, 28 * mm, 35 * mm])
         parts_table.setStyle(TableStyle([
             ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#1A1D22")),
             ('LINEBELOW', (0, 1), (-1, -2), 0.5, colors.HexColor("#E2E8F0")),
@@ -238,26 +250,36 @@ def generate_invoice_pdf(
         labour_header = "LABOUR & SERVICES" if invoice.status == "FINALIZED" else "ESTIMATED LABOUR & SERVICES"
         story.append(Paragraph(f"<b>{labour_header}</b>", bold_style))
         labour_data = [
-            [Paragraph("<b>#</b>", bold_style), Paragraph("<b>Description</b>", bold_style), Paragraph("<b>Qty</b>", right_bold), Paragraph("<b>Rate</b>", right_bold), Paragraph("<b>Amount</b>", right_bold)]
+            [
+                Paragraph("<b>#</b>", bold_style),
+                Paragraph("<b>Description</b>", bold_style),
+                Paragraph("<b>SAC</b>", normal_style),
+                Paragraph("<b>Qty</b>", right_bold),
+                Paragraph("<b>Rate</b>", right_bold),
+                Paragraph("<b>Amount</b>", right_bold)
+            ]
         ]
         for idx, l in enumerate(active_labour, start=1):
             desc = l.description
             if invoice.status == "DRAFT" and l.status == "RECOMMENDED":
                 desc += " <i>[Recommended]</i>"
 
+            sac = getattr(l, "sac_code", None) or "998729"
+
             labour_data.append([
                 Paragraph(str(idx), normal_style),
                 Paragraph(desc, normal_style),
+                Paragraph(sac, normal_style),
                 Paragraph(f"{l.quantity:g}", right_style),
                 Paragraph(format_inr(l.unit_price), right_style),
                 Paragraph(format_inr(l.total), right_style)
             ])
         labour_label = "Labour Total" if invoice.status == "FINALIZED" else "Labour Estimate"
         labour_data.append([
-            "", Paragraph(f"<b>{labour_label}</b>", bold_style), "", "", Paragraph(format_inr(invoice.labour_total), right_bold)
+            "", Paragraph(f"<b>{labour_label}</b>", bold_style), "", "", "", Paragraph(format_inr(invoice.labour_total), right_bold)
         ])
         
-        labour_table = Table(labour_data, colWidths=[8 * mm, 82 * mm, 25 * mm, 30 * mm, 35 * mm])
+        labour_table = Table(labour_data, colWidths=[7 * mm, 68 * mm, 20 * mm, 22 * mm, 28 * mm, 35 * mm])
         labour_table.setStyle(TableStyle([
             ('LINEBELOW', (0, 0), (-1, 0), 1, colors.HexColor("#1A1D22")),
             ('LINEBELOW', (0, 1), (-1, -2), 0.5, colors.HexColor("#E2E8F0")),
@@ -268,7 +290,7 @@ def generate_invoice_pdf(
         story.append(labour_table)
         story.append(Spacer(1, 10))
 
-    # 5. Other Charges, Discount, and Totals
+    # 5. Other Charges, Discount, Tax, and Totals
     summary_rows = [
         [Paragraph("Parts Total:" if invoice.status == "FINALIZED" else "Parts Estimate:", normal_style), Paragraph(format_inr(invoice.parts_total), right_style)],
         [Paragraph("Labour Total:" if invoice.status == "FINALIZED" else "Labour Estimate:", normal_style), Paragraph(format_inr(invoice.labour_total), right_style)],
@@ -277,8 +299,18 @@ def generate_invoice_pdf(
         summary_rows.append([Paragraph("Other Charges / Consumables:", normal_style), Paragraph(format_inr(invoice.other_charges_total), right_style)])
     if invoice.discount > 0:
         summary_rows.append([Paragraph("Discount:", normal_style), Paragraph(f"-{format_inr(invoice.discount)}", right_style)])
+    
+    # GST Breakdown
+    taxable_val = invoice.taxable_amount or (invoice.grand_total - invoice.tax_total)
     if invoice.tax_total > 0:
-        summary_rows.append([Paragraph("GST / Tax:", normal_style), Paragraph(format_inr(invoice.tax_total), right_style)])
+        summary_rows.append([Paragraph("Taxable Value:", normal_style), Paragraph(format_inr(taxable_val), right_style)])
+        if invoice.igst_amount and invoice.igst_amount > 0:
+            summary_rows.append([Paragraph("IGST (Integrated Tax):", normal_style), Paragraph(format_inr(invoice.igst_amount), right_style)])
+        else:
+            cgst = invoice.cgst_amount or (invoice.tax_total // 2)
+            sgst = invoice.sgst_amount or (invoice.tax_total // 2)
+            summary_rows.append([Paragraph("CGST (Central Tax):", normal_style), Paragraph(format_inr(cgst), right_style)])
+            summary_rows.append([Paragraph("SGST (State Tax):", normal_style), Paragraph(format_inr(sgst), right_style)])
     
     total_label = "<b>GRAND TOTAL:</b>" if invoice.status == "FINALIZED" else "<b>ESTIMATED TOTAL:</b>"
     summary_rows.append([
