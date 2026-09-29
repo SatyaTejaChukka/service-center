@@ -56,6 +56,7 @@ def create_customer(
         alt_phone=req.alt_phone.strip() if req.alt_phone else None,
         email=req.email.strip() if req.email else None,
         address=req.address.strip() if req.address else None,
+        gstin=req.gstin.strip().upper() if req.gstin else None,
         notes=req.notes.strip() if req.notes else None
     )
     db.add(customer)

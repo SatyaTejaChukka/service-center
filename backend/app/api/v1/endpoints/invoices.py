@@ -26,14 +26,41 @@ router = APIRouter()
 def sync_invoice_calculations(db: Session, invoice: Invoice):
     """Authoritative recalculation for the given invoice."""
     jc = invoice.job_card
+
+    # Check if interstate: compare customer GSTIN state code with workshop GSTIN
+    is_interstate = False
+    customer = jc.customer if jc else None
+    if customer and getattr(customer, "gstin", None) and len(customer.gstin) >= 2:
+        setting = db.query(Setting).filter(Setting.key == "business_profile").first()
+        profile = json.loads(setting.value_json) if setting else {}
+        w_gstin = profile.get("gstin", "")
+        if w_gstin and len(w_gstin) >= 2:
+            is_interstate = (customer.gstin[:2] != w_gstin[:2])
+
     parts_calc = [
-        LineItemCalc(quantity=p.quantity, unit_price=p.unit_price, status=p.status)
+        LineItemCalc(
+            quantity=p.quantity,
+            unit_price=p.unit_price,
+            cost_price=getattr(p, "cost_price", 0),
+            gst_rate=getattr(p, "gst_rate", 18),
+            hsn_or_sac=getattr(p, "hsn_code", "8708"),
+            status=p.status
+        )
         for p in jc.parts_items
     ] if jc else []
+
     labour_calc = [
-        LineItemCalc(quantity=l.quantity, unit_price=l.unit_price, status=l.status)
+        LineItemCalc(
+            quantity=l.quantity,
+            unit_price=l.unit_price,
+            cost_price=getattr(l, "cost_price", 0),
+            gst_rate=getattr(l, "gst_rate", 18),
+            hsn_or_sac=getattr(l, "sac_code", "998729"),
+            status=l.status
+        )
         for l in jc.labour_items
     ] if jc else []
+
     other_calc = [
         OtherChargeCalc(amount=o.amount)
         for o in invoice.other_charges
@@ -52,13 +79,22 @@ def sync_invoice_calculations(db: Session, invoice: Invoice):
         tax_paise=invoice.tax_total,
         round_off_paise=invoice.round_off,
         payments=payments_calc,
-        is_draft=(invoice.status == "DRAFT")
+        is_draft=(invoice.status == "DRAFT"),
+        is_interstate=is_interstate
     )
 
     invoice.parts_total = res.parts_total
     invoice.labour_total = res.labour_total
     invoice.other_charges_total = res.other_charges_total
     invoice.discount = res.discount
+    invoice.tax_total = res.tax_total
+    invoice.taxable_amount = res.taxable_amount
+    invoice.cgst_amount = res.cgst_amount
+    invoice.sgst_amount = res.sgst_amount
+    invoice.igst_amount = res.igst_amount
+    invoice.total_cost = res.total_cost
+    invoice.gross_profit = res.gross_profit
+    invoice.round_off = res.round_off
     invoice.grand_total = res.grand_total
     invoice.payment_status = res.payment_status
     db.flush()
@@ -179,7 +215,8 @@ def get_invoice_detail(
         "customer": {
             "id": jc.customer.id,
             "name": jc.customer.name,
-            "phone": jc.customer.phone
+            "phone": jc.customer.phone,
+            "gstin": getattr(jc.customer, "gstin", "")
         } if (jc and jc.customer) else None,
         "vehicle": {
             "id": jc.vehicle.id,
@@ -194,6 +231,13 @@ def get_invoice_detail(
         "discount": inv.discount,
         "discount_reason": inv.discount_reason,
         "tax_total": inv.tax_total,
+        "taxable_amount": getattr(inv, "taxable_amount", 0),
+        "cgst_amount": getattr(inv, "cgst_amount", 0),
+        "sgst_amount": getattr(inv, "sgst_amount", 0),
+        "igst_amount": getattr(inv, "igst_amount", 0),
+        "total_cost": getattr(inv, "total_cost", 0),
+        "gross_profit": getattr(inv, "gross_profit", 0),
+        "profit_margin_percent": round((inv.gross_profit / inv.taxable_amount * 100), 2) if (getattr(inv, "taxable_amount", 0) > 0 and getattr(inv, "gross_profit", 0) != 0) else 0.0,
         "round_off": inv.round_off,
         "grand_total": inv.grand_total,
         "amount_paid": paid,

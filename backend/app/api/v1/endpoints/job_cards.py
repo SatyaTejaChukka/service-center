@@ -505,6 +505,9 @@ def add_labour_item(
         quantity=req.quantity,
         unit_price=req.unit_price,
         total=line_tot,
+        cost_price=req.cost_price or 0,
+        sac_code=req.sac_code or "998729",
+        gst_rate=int(req.gst_rate or 18),
         status=req.status,
         catalog_id=req.catalog_id
     )
@@ -565,6 +568,12 @@ def update_labour_item(
         item.quantity = float(data["quantity"])
     if "unit_price" in data:
         item.unit_price = int(data["unit_price"])
+    if "cost_price" in data:
+        item.cost_price = int(data["cost_price"])
+    if "sac_code" in data:
+        item.sac_code = str(data["sac_code"]).strip()
+    if "gst_rate" in data:
+        item.gst_rate = int(data["gst_rate"])
     if "description" in data and data["description"].strip():
         item.description = data["description"].strip()
 
@@ -598,6 +607,9 @@ def add_part_item(
         unit=req.unit,
         quantity=req.quantity,
         unit_price=req.unit_price,
+        cost_price=req.cost_price or req.purchase_cost or 0,
+        hsn_code=req.hsn_code or "8708",
+        gst_rate=int(req.gst_rate or 18),
         total=line_tot,
         status=req.status,
         catalog_id=req.catalog_id
@@ -665,6 +677,14 @@ def update_part_item(
         item.unit = data["unit"].strip()
     if "part_number" in data:
         item.part_number = data["part_number"].strip() or None
+    if "cost_price" in data:
+        item.cost_price = int(data["cost_price"])
+    elif "purchase_cost" in data:
+        item.cost_price = int(data["purchase_cost"])
+    if "hsn_code" in data:
+        item.hsn_code = str(data["hsn_code"]).strip()
+    if "gst_rate" in data:
+        item.gst_rate = int(data["gst_rate"])
 
     item.total = calculate_line_total(item.quantity, item.unit_price)
     db.flush()

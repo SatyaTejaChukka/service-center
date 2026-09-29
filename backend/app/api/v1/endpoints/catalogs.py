@@ -26,16 +26,29 @@ def create_labour_catalog_item(
     rate = data.get("default_rate", 0)
     if rate < 0:
         raise HTTPException(status_code=400, detail="Default rate cannot be negative")
+    cost_price = data.get("cost_price", 0)
+    sac_code = data.get("sac_code", "998729")
+    gst_rate = data.get("gst_rate", 18.0)
 
     existing = db.query(LabourCatalog).filter(LabourCatalog.name == name).first()
     if existing:
         existing.is_active = True
         existing.default_rate = rate
+        existing.cost_price = cost_price
+        existing.sac_code = sac_code
+        existing.gst_rate = gst_rate
         db.commit()
         db.refresh(existing)
         return existing
 
-    item = LabourCatalog(name=name, default_rate=rate, is_active=True)
+    item = LabourCatalog(
+        name=name,
+        default_rate=rate,
+        cost_price=cost_price,
+        sac_code=sac_code,
+        gst_rate=gst_rate,
+        is_active=True
+    )
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -67,8 +80,13 @@ def create_parts_catalog_item(
     price = data.get("default_price", 0)
     if price < 0:
         raise HTTPException(status_code=400, detail="Default price cannot be negative")
+    cost_price = data.get("cost_price", data.get("purchase_cost", 0))
+    if cost_price < 0:
+        cost_price = 0
     part_no = data.get("part_number", "").strip() or None
     unit = data.get("unit", "pcs").strip() or "pcs"
+    hsn_code = data.get("hsn_code", "8708").strip() or "8708"
+    gst_rate = data.get("gst_rate", 18.0)
 
     existing = db.query(PartsCatalog).filter(PartsCatalog.name == name).first()
     if existing:
@@ -76,6 +94,10 @@ def create_parts_catalog_item(
         existing.part_number = part_no
         existing.unit = unit
         existing.default_price = price
+        existing.cost_price = cost_price
+        existing.purchase_cost = cost_price
+        existing.hsn_code = hsn_code
+        existing.gst_rate = gst_rate
         db.commit()
         db.refresh(existing)
         return existing
@@ -85,6 +107,9 @@ def create_parts_catalog_item(
         part_number=part_no,
         unit=unit,
         default_price=price,
+        purchase_cost=cost_price,
+        hsn_code=hsn_code,
+        gst_rate=gst_rate,
         is_active=True
     )
     db.add(item)
