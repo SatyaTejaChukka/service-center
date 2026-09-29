@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Printer,
@@ -34,6 +34,77 @@ import {
 } from '../lib/whatsapp';
 
 import { InvoiceDetailModal } from '../components/invoice/InvoiceDetailModal';
+
+export const STATUS_OPTIONS = [
+  {
+    value: 'RECEIVED',
+    label: 'Received',
+    desc: 'Vehicle intake recorded',
+    dotClass: 'bg-slate-500',
+    buttonClass: 'bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-800',
+  },
+  {
+    value: 'INSPECTION',
+    label: 'Inspection',
+    desc: 'Diagnosis & multi-point checklist',
+    dotClass: 'bg-indigo-500',
+    buttonClass: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-300 text-indigo-900',
+  },
+  {
+    value: 'WAITING_FOR_APPROVAL',
+    label: 'Waiting for Approval',
+    desc: 'Estimate sent, awaiting customer',
+    dotClass: 'bg-amber-500',
+    buttonClass: 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900',
+  },
+  {
+    value: 'APPROVED',
+    label: 'Approved',
+    desc: 'Customer approved estimate',
+    dotClass: 'bg-teal-500',
+    buttonClass: 'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-900',
+  },
+  {
+    value: 'IN_PROGRESS',
+    label: 'In Progress',
+    desc: 'Active service & bay work',
+    dotClass: 'bg-blue-500',
+    buttonClass: 'bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-900',
+  },
+  {
+    value: 'READY_FOR_DELIVERY',
+    label: 'Ready for Delivery',
+    desc: 'Work done, road tested & QC passed',
+    dotClass: 'bg-purple-500',
+    buttonClass: 'bg-purple-50 hover:bg-purple-100 border-purple-300 text-purple-900',
+  },
+  {
+    value: 'COMPLETED',
+    label: 'Completed',
+    desc: 'Invoice finalized & car delivered',
+    dotClass: 'bg-emerald-500',
+    buttonClass: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-300 text-emerald-900',
+  },
+  {
+    value: 'CANCELLED',
+    label: 'Cancelled',
+    desc: 'Service cancelled by owner',
+    dotClass: 'bg-rose-500',
+    buttonClass: 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-900',
+  },
+];
+
+export const getStatusConfig = (status: string) => {
+  return (
+    STATUS_OPTIONS.find((s) => s.value === status) || {
+      value: status,
+      label: status ? status.replace(/_/g, ' ') : 'Status',
+      desc: '',
+      dotClass: 'bg-slate-400',
+      buttonClass: 'bg-white hover:bg-gray-50 border-workshop-border text-workshop-text',
+    }
+  );
+};
 
 interface Props {
   jobCardId: number;
@@ -74,6 +145,29 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [newStatus, setNewStatus] = useState('');
   const [statusNote, setStatusNote] = useState('');
   const [cancelReason, setCancelReason] = useState('');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // Dropdown refs for click-outside
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const printDropdownRef = useRef<HTMLDivElement>(null);
+  const whatsAppDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+      if (printDropdownRef.current && !printDropdownRef.current.contains(event.target as Node)) {
+        setShowPrintDropdown(false);
+      }
+      if (whatsAppDropdownRef.current && !whatsAppDropdownRef.current.contains(event.target as Node)) {
+        setShowWhatsAppDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Add Labour Modal state
   const [showAddLabourModal, setShowAddLabourModal] = useState(false);
@@ -243,6 +337,44 @@ export const JobCardDetailPage: React.FC<Props> = ({
   useEffect(() => {
     fetchDetail();
   }, [jobCardId]);
+
+  const handleSelectStatus = async (targetStatus: string) => {
+    if (!data || data.status === targetStatus) {
+      setShowStatusDropdown(false);
+      return;
+    }
+
+    if (targetStatus === 'CANCELLED') {
+      setShowStatusDropdown(false);
+      setNewStatus('CANCELLED');
+      setShowStatusModal(true);
+      return;
+    }
+
+    if (targetStatus === 'COMPLETED') {
+      if (!data.invoice || data.invoice.status !== 'FINALIZED') {
+        alert('Cannot mark as COMPLETED without a finalised invoice. Please finalize the invoice first.');
+        setShowStatusDropdown(false);
+        return;
+      }
+    }
+
+    try {
+      setUpdatingStatus(true);
+      await apiRequest(`/job-cards/${jobCardId}/status`, {
+        method: 'POST',
+        body: JSON.stringify({
+          status: targetStatus,
+        }),
+      });
+      setShowStatusDropdown(false);
+      await fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   const handleUpdateStatus = async () => {
     try {
@@ -589,22 +721,85 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
         {/* Right: Action Buttons Toolbar */}
         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-          <button
-            type="button"
-            onClick={() => setShowStatusModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 border border-workshop-border text-workshop-text font-semibold text-xs rounded-lg transition shadow-2xs cursor-pointer"
-            title="Update Job Card Status"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-workshop-muted" />
-            <span>Update Status</span>
-          </button>
+          {/* Live Vehicle Status Dropdown */}
+          <div className="relative" ref={statusDropdownRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowStatusDropdown(!showStatusDropdown);
+                setShowPrintDropdown(false);
+                setShowWhatsAppDropdown(false);
+              }}
+              disabled={updatingStatus}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 border rounded-lg transition shadow-2xs cursor-pointer text-xs font-semibold ${
+                getStatusConfig(data.status).buttonClass
+              }`}
+              title={`Current Vehicle Status: ${getStatusConfig(data.status).label}. Click to choose another status.`}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${getStatusConfig(data.status).dotClass} ${updatingStatus ? 'animate-ping' : ''}`} />
+              <span className="font-bold">{getStatusConfig(data.status).label}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 opacity-70 ${showStatusDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showStatusDropdown && (
+              <div className="absolute left-0 xl:left-auto xl:right-0 mt-1.5 w-64 bg-white rounded-xl shadow-xl border border-workshop-border py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-workshop-muted border-b border-gray-100 flex items-center justify-between">
+                  <span>Change Vehicle Status</span>
+                  <span className="font-normal text-[9px] text-gray-400">1-Click</span>
+                </div>
+                <div className="py-1 max-h-72 overflow-y-auto">
+                  {STATUS_OPTIONS.map((opt) => {
+                    const isCurrent = data.status === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        disabled={isCurrent || updatingStatus}
+                        onClick={() => handleSelectStatus(opt.value)}
+                        className={`w-full text-left px-3.5 py-2 flex items-center justify-between text-xs transition cursor-pointer ${
+                          isCurrent
+                            ? 'bg-gray-50/80 font-bold text-gray-400 cursor-default'
+                            : 'hover:bg-gray-50 text-workshop-text hover:text-brand'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotClass}`} />
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{opt.label}</span>
+                            <span className="text-[10px] text-workshop-muted font-normal">{opt.desc}</span>
+                          </div>
+                        </div>
+                        {isCurrent && (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 ml-2" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="pt-1.5 border-t border-gray-100 px-2 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowStatusDropdown(false);
+                      setNewStatus(data.status);
+                      setShowStatusModal(true);
+                    }}
+                    className="w-full text-center py-1.5 text-[11px] font-medium text-workshop-muted hover:text-workshop-text hover:bg-gray-50 rounded-lg transition cursor-pointer"
+                  >
+                    Add note / Detailed dialog &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Print Template Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={printDropdownRef}>
             <button
               type="button"
               onClick={() => {
                 setShowPrintDropdown(!showPrintDropdown);
+                setShowStatusDropdown(false);
                 setShowWhatsAppDropdown(false);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-gray-50 border border-workshop-border text-workshop-text font-semibold text-xs rounded-lg transition shadow-2xs cursor-pointer"
@@ -661,7 +856,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
           </div>
 
           {/* WhatsApp Communications Split Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={whatsAppDropdownRef}>
             <button
               type="button"
               onClick={() => setShowWhatsAppDropdown(!showWhatsAppDropdown)}
