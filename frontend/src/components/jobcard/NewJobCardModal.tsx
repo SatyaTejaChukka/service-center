@@ -801,8 +801,9 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                     <input
                       type="number"
                       required
-                      value={vehicleData.odometer}
-                      onChange={(e) => setVehicleData({ ...vehicleData, odometer: Number(e.target.value) })}
+                      placeholder="0"
+                      value={vehicleData.odometer === 0 ? '' : vehicleData.odometer}
+                      onChange={(e) => setVehicleData({ ...vehicleData, odometer: e.target.value === '' ? 0 : Number(e.target.value) })}
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                     />
                   </div>
@@ -1130,10 +1131,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                         <td className="p-2 text-right">
                           <input
                             type="number"
-                            value={l.quantity}
+                            value={l.quantity === 0 ? '' : l.quantity}
+                            placeholder="1"
                             onChange={(e) => {
                               const updated = [...labourLines];
-                              updated[idx].quantity = Number(e.target.value);
+                              updated[idx].quantity = e.target.value === '' ? 0 : Number(e.target.value);
                               setLabourLines(updated);
                             }}
                             className="w-16 px-2 py-1 text-right border border-gray-200 rounded font-mono"
@@ -1142,10 +1144,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                         <td className="p-2 text-right">
                           <input
                             type="number"
-                            value={l.unit_price / 100}
+                            placeholder="0"
+                            value={l.unit_price === 0 ? '' : l.unit_price / 100}
                             onChange={(e) => {
                               const updated = [...labourLines];
-                              updated[idx].unit_price = Math.round(Number(e.target.value) * 100);
+                              updated[idx].unit_price = e.target.value === '' ? 0 : Math.round(Number(e.target.value) * 100);
                               setLabourLines(updated);
                             }}
                             className="w-24 px-2 py-1 text-right border border-gray-200 rounded font-mono"
@@ -1239,10 +1242,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                           <input
                             type="number"
                             step="0.1"
-                            value={p.quantity}
+                            value={p.quantity === 0 ? '' : p.quantity}
+                            placeholder="1"
                             onChange={(e) => {
                               const updated = [...partLines];
-                              updated[idx].quantity = Number(e.target.value);
+                              updated[idx].quantity = e.target.value === '' ? 0 : Number(e.target.value);
                               setPartLines(updated);
                             }}
                             className="w-16 px-2 py-1 text-right border border-gray-200 rounded font-mono"
@@ -1251,10 +1255,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                         <td className="p-2 text-right">
                           <input
                             type="number"
-                            value={p.unit_price / 100}
+                            placeholder="0"
+                            value={p.unit_price === 0 ? '' : p.unit_price / 100}
                             onChange={(e) => {
                               const updated = [...partLines];
-                              updated[idx].unit_price = Math.round(Number(e.target.value) * 100);
+                              updated[idx].unit_price = e.target.value === '' ? 0 : Math.round(Number(e.target.value) * 100);
                               setPartLines(updated);
                             }}
                             className="w-24 px-2 py-1 text-right border border-gray-200 rounded font-mono"

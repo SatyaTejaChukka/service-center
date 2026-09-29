@@ -13,16 +13,16 @@ export const CatalogsPage: React.FC = () => {
 
   // New labour form
   const [newLabourName, setNewLabourName] = useState('');
-  const [newLabourRate, setNewLabourRate] = useState<number>(500);
-  const [newLabourCost, setNewLabourCost] = useState<number>(150);
+  const [newLabourRate, setNewLabourRate] = useState<number | string>('');
+  const [newLabourCost, setNewLabourCost] = useState<number | string>('');
   const [newLabourSac, setNewLabourSac] = useState('998729');
   const [newLabourGst, setNewLabourGst] = useState<number>(18);
 
   // Edit labour modal state
   const [editingLabour, setEditingLabour] = useState<any | null>(null);
   const [editLabourName, setEditLabourName] = useState('');
-  const [editLabourRate, setEditLabourRate] = useState<number>(0);
-  const [editLabourCost, setEditLabourCost] = useState<number>(0);
+  const [editLabourRate, setEditLabourRate] = useState<number | string>('');
+  const [editLabourCost, setEditLabourCost] = useState<number | string>('');
   const [editLabourSac, setEditLabourSac] = useState('');
   const [editLabourGst, setEditLabourGst] = useState<number>(18);
   const [editLabourSaving, setEditLabourSaving] = useState(false);
@@ -31,8 +31,8 @@ export const CatalogsPage: React.FC = () => {
   const [newPartName, setNewPartName] = useState('');
   const [newPartNumber, setNewPartNumber] = useState('');
   const [newPartUnit, setNewPartUnit] = useState('pcs');
-  const [newPartPrice, setNewPartPrice] = useState<number>(500);
-  const [newPartCost, setNewPartCost] = useState<number>(300);
+  const [newPartPrice, setNewPartPrice] = useState<number | string>('');
+  const [newPartCost, setNewPartCost] = useState<number | string>('');
   const [newPartHsn, setNewPartHsn] = useState('8708');
   const [newPartGst, setNewPartGst] = useState<number>(18);
 
@@ -41,8 +41,8 @@ export const CatalogsPage: React.FC = () => {
   const [editPartName, setEditPartName] = useState('');
   const [editPartNumber, setEditPartNumber] = useState('');
   const [editPartUnit, setEditPartUnit] = useState('pcs');
-  const [editPartPrice, setEditPartPrice] = useState<number>(0);
-  const [editPartCost, setEditPartCost] = useState<number>(0);
+  const [editPartPrice, setEditPartPrice] = useState<number | string>('');
+  const [editPartCost, setEditPartCost] = useState<number | string>('');
   const [editPartHsn, setEditPartHsn] = useState('');
   const [editPartGst, setEditPartGst] = useState<number>(18);
   const [editPartSaving, setEditPartSaving] = useState(false);
@@ -70,8 +70,8 @@ export const CatalogsPage: React.FC = () => {
   const handleOpenEditLabour = (item: any) => {
     setEditingLabour(item);
     setEditLabourName(item.name);
-    setEditLabourRate(Math.round((item.default_rate || 0) / 100));
-    setEditLabourCost(Math.round((item.cost_price || 0) / 100));
+    setEditLabourRate(item.default_rate ? Math.round(item.default_rate / 100) : '');
+    setEditLabourCost(item.cost_price ? Math.round(item.cost_price / 100) : '');
     setEditLabourSac(item.sac_code || '998729');
     setEditLabourGst(item.gst_rate ?? 18);
   };
@@ -85,8 +85,8 @@ export const CatalogsPage: React.FC = () => {
         method: 'PUT',
         body: JSON.stringify({
           name: editLabourName.trim(),
-          default_rate: Math.round(Number(editLabourRate) * 100),
-          cost_price: Math.round(Number(editLabourCost) * 100),
+          default_rate: Math.round(Number(editLabourRate || 0) * 100),
+          cost_price: Math.round(Number(editLabourCost || 0) * 100),
           sac_code: editLabourSac.trim() || '998729',
           gst_rate: Number(editLabourGst) || 18,
         }),
@@ -105,8 +105,8 @@ export const CatalogsPage: React.FC = () => {
     setEditPartName(item.name);
     setEditPartNumber(item.part_number || '');
     setEditPartUnit(item.unit || 'pcs');
-    setEditPartPrice(Math.round((item.default_price || 0) / 100));
-    setEditPartCost(Math.round((item.purchase_cost || item.cost_price || 0) / 100));
+    setEditPartPrice(item.default_price ? Math.round(item.default_price / 100) : '');
+    setEditPartCost((item.purchase_cost || item.cost_price) ? Math.round((item.purchase_cost || item.cost_price) / 100) : '');
     setEditPartHsn(item.hsn_code || '8708');
     setEditPartGst(item.gst_rate ?? 18);
   };
@@ -122,9 +122,9 @@ export const CatalogsPage: React.FC = () => {
           name: editPartName.trim(),
           part_number: editPartNumber.trim() || undefined,
           unit: editPartUnit,
-          default_price: Math.round(Number(editPartPrice) * 100),
-          purchase_cost: Math.round(Number(editPartCost) * 100),
-          cost_price: Math.round(Number(editPartCost) * 100),
+          default_price: Math.round(Number(editPartPrice || 0) * 100),
+          purchase_cost: Math.round(Number(editPartCost || 0) * 100),
+          cost_price: Math.round(Number(editPartCost || 0) * 100),
           hsn_code: editPartHsn.trim() || '8708',
           gst_rate: Number(editPartGst) || 18,
         }),
@@ -146,15 +146,15 @@ export const CatalogsPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({
           name: newLabourName.trim(),
-          default_rate: Math.round(newLabourRate * 100),
-          cost_price: Math.round(newLabourCost * 100),
+          default_rate: Math.round(Number(newLabourRate || 0) * 100),
+          cost_price: Math.round(Number(newLabourCost || 0) * 100),
           sac_code: newLabourSac.trim() || '998729',
           gst_rate: Number(newLabourGst) || 18,
         }),
       });
       setNewLabourName('');
-      setNewLabourRate(500);
-      setNewLabourCost(150);
+      setNewLabourRate('');
+      setNewLabourCost('');
       fetchCatalogs();
     } catch (err: any) {
       alert(err.message || 'Failed to add labour item');
@@ -171,17 +171,17 @@ export const CatalogsPage: React.FC = () => {
           name: newPartName.trim(),
           part_number: newPartNumber.trim() || undefined,
           unit: newPartUnit,
-          default_price: Math.round(newPartPrice * 100),
-          purchase_cost: Math.round(newPartCost * 100),
-          cost_price: Math.round(newPartCost * 100),
+          default_price: Math.round(Number(newPartPrice || 0) * 100),
+          purchase_cost: Math.round(Number(newPartCost || 0) * 100),
+          cost_price: Math.round(Number(newPartCost || 0) * 100),
           hsn_code: newPartHsn.trim() || '8708',
           gst_rate: Number(newPartGst) || 18,
         }),
       });
       setNewPartName('');
       setNewPartNumber('');
-      setNewPartPrice(500);
-      setNewPartCost(300);
+      setNewPartPrice('');
+      setNewPartCost('');
       fetchCatalogs();
     } catch (err: any) {
       alert(err.message || 'Failed to add part item');
@@ -329,8 +329,9 @@ export const CatalogsPage: React.FC = () => {
                       type="number"
                       required
                       min="0"
-                      value={newLabourRate}
-                      onChange={(e) => setNewLabourRate(Number(e.target.value))}
+                      placeholder="0"
+                      value={newLabourRate === 0 || newLabourRate === '0' || newLabourRate === '' ? '' : newLabourRate}
+                      onChange={(e) => setNewLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                     />
                   </div>
@@ -339,8 +340,9 @@ export const CatalogsPage: React.FC = () => {
                     <input
                       type="number"
                       min="0"
-                      value={newLabourCost}
-                      onChange={(e) => setNewLabourCost(Number(e.target.value))}
+                      placeholder="0"
+                      value={newLabourCost === 0 || newLabourCost === '0' || newLabourCost === '' ? '' : newLabourCost}
+                      onChange={(e) => setNewLabourCost(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                       title="Estimated mechanic cost or contractor payout"
                     />
@@ -348,19 +350,19 @@ export const CatalogsPage: React.FC = () => {
                 </div>
 
                 {/* Dynamic Margin Indicator for Add Form */}
-                {newLabourRate > 0 && (
+                {Number(newLabourRate) > 0 && (
                   <div className="p-2 bg-blue-50/60 rounded-lg border border-blue-100 flex items-center justify-between text-xs">
                     <span className="text-workshop-muted font-medium">Estimated Margin:</span>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-workshop-text font-semibold">
-                        Profit: ₹{Math.max(0, newLabourRate - newLabourCost)}
+                        Profit: ₹{Math.max(0, (Number(newLabourRate) || 0) - (Number(newLabourCost) || 0))}
                       </span>
                       <span className={`px-2 py-0.5 rounded font-bold font-mono text-[11px] ${
-                        Math.round(((newLabourRate - newLabourCost) / newLabourRate) * 100) >= 40
+                        Math.round((((Number(newLabourRate) || 0) - (Number(newLabourCost) || 0)) / (Number(newLabourRate) || 1)) * 100) >= 40
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {Math.round(((newLabourRate - newLabourCost) / newLabourRate) * 100)}%
+                        {Math.round((((Number(newLabourRate) || 0) - (Number(newLabourCost) || 0)) / (Number(newLabourRate) || 1)) * 100)}%
                       </span>
                     </div>
                   </div>
@@ -531,8 +533,9 @@ export const CatalogsPage: React.FC = () => {
                     <input
                       type="number"
                       min="0"
-                      value={newPartCost}
-                      onChange={(e) => setNewPartCost(Number(e.target.value))}
+                      placeholder="0"
+                      value={newPartCost === 0 || newPartCost === '0' || newPartCost === '' ? '' : newPartCost}
+                      onChange={(e) => setNewPartCost(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-2 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                       title="Workshop wholesale / purchase cost"
                     />
@@ -543,27 +546,28 @@ export const CatalogsPage: React.FC = () => {
                       type="number"
                       required
                       min="0"
-                      value={newPartPrice}
-                      onChange={(e) => setNewPartPrice(Number(e.target.value))}
+                      placeholder="0"
+                      value={newPartPrice === 0 || newPartPrice === '0' || newPartPrice === '' ? '' : newPartPrice}
+                      onChange={(e) => setNewPartPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-2 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                     />
                   </div>
                 </div>
 
                 {/* Dynamic Margin Indicator for Add Form */}
-                {newPartPrice > 0 && (
+                {Number(newPartPrice) > 0 && (
                   <div className="p-2 bg-blue-50/60 rounded-lg border border-blue-100 flex items-center justify-between text-xs">
                     <span className="text-workshop-muted font-medium">Estimated Margin:</span>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-workshop-text font-semibold">
-                        Profit: ₹{Math.max(0, newPartPrice - newPartCost)}
+                        Profit: ₹{Math.max(0, (Number(newPartPrice) || 0) - (Number(newPartCost) || 0))}
                       </span>
                       <span className={`px-2 py-0.5 rounded font-bold font-mono text-[11px] ${
-                        Math.round(((newPartPrice - newPartCost) / newPartPrice) * 100) >= 30
+                        Math.round((((Number(newPartPrice) || 0) - (Number(newPartCost) || 0)) / (Number(newPartPrice) || 1)) * 100) >= 30
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {Math.round(((newPartPrice - newPartCost) / newPartPrice) * 100)}%
+                        {Math.round((((Number(newPartPrice) || 0) - (Number(newPartCost) || 0)) / (Number(newPartPrice) || 1)) * 100)}%
                       </span>
                     </div>
                   </div>
@@ -641,8 +645,9 @@ export const CatalogsPage: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    value={editLabourCost}
-                    onChange={(e) => setEditLabourCost(Number(e.target.value))}
+                    placeholder="0"
+                    value={editLabourCost === 0 || editLabourCost === '0' || editLabourCost === '' ? '' : editLabourCost}
+                    onChange={(e) => setEditLabourCost(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                     title="Estimated mechanic cost or contractor payout"
                   />
@@ -656,8 +661,9 @@ export const CatalogsPage: React.FC = () => {
                     type="number"
                     required
                     min="0"
-                    value={editLabourRate}
-                    onChange={(e) => setEditLabourRate(Number(e.target.value))}
+                    placeholder="0"
+                    value={editLabourRate === 0 || editLabourRate === '0' || editLabourRate === '' ? '' : editLabourRate}
+                    onChange={(e) => setEditLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono font-bold text-brand-deep"
                   />
                 </div>
@@ -671,18 +677,18 @@ export const CatalogsPage: React.FC = () => {
                     Live Profitability &amp; Margin
                   </span>
                   <span className={`px-2 py-0.5 rounded-full font-bold font-mono text-[11px] ${
-                    editLabourRate > 0 && Math.round(((editLabourRate - editLabourCost) / editLabourRate) * 100) >= 40
+                    Number(editLabourRate) > 0 && Math.round((((Number(editLabourRate) || 0) - (Number(editLabourCost) || 0)) / (Number(editLabourRate) || 1)) * 100) >= 40
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-amber-100 text-amber-800'
                   }`}>
-                    {editLabourRate > 0 ? Math.round(((editLabourRate - editLabourCost) / editLabourRate) * 100) : 0}% Gross Margin
+                    {Number(editLabourRate) > 0 ? Math.round((((Number(editLabourRate) || 0) - (Number(editLabourCost) || 0)) / (Number(editLabourRate) || 1)) * 100) : 0}% Gross Margin
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className="text-workshop-muted">Gross Profit per job:</span>
                   <span className="font-mono font-bold text-emerald-700 text-sm">
-                    ₹{(editLabourRate - editLabourCost).toLocaleString('en-IN')}
+                    ₹{((Number(editLabourRate) || 0) - (Number(editLabourCost) || 0)).toLocaleString('en-IN')}
                   </span>
                 </div>
 
@@ -695,8 +701,9 @@ export const CatalogsPage: React.FC = () => {
                         key={pct}
                         type="button"
                         onClick={() => {
-                          if (editLabourCost > 0) {
-                            setEditLabourRate(Math.round(editLabourCost / (1 - pct / 100)));
+                          const cost = Number(editLabourCost) || 0;
+                          if (cost > 0) {
+                            setEditLabourRate(Math.round(cost / (1 - pct / 100)));
                           }
                         }}
                         className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-mono font-semibold transition cursor-pointer"
@@ -832,8 +839,9 @@ export const CatalogsPage: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    value={editPartCost}
-                    onChange={(e) => setEditPartCost(Number(e.target.value))}
+                    placeholder="0"
+                    value={editPartCost === 0 || editPartCost === '0' || editPartCost === '' ? '' : editPartCost}
+                    onChange={(e) => setEditPartCost(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
                     title="Wholesale purchase cost from supplier"
                   />
@@ -847,8 +855,9 @@ export const CatalogsPage: React.FC = () => {
                     type="number"
                     required
                     min="0"
-                    value={editPartPrice}
-                    onChange={(e) => setEditPartPrice(Number(e.target.value))}
+                    placeholder="0"
+                    value={editPartPrice === 0 || editPartPrice === '0' || editPartPrice === '' ? '' : editPartPrice}
+                    onChange={(e) => setEditPartPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono font-bold text-brand-deep"
                   />
                 </div>
@@ -862,18 +871,18 @@ export const CatalogsPage: React.FC = () => {
                     Live Profitability &amp; Margin
                   </span>
                   <span className={`px-2 py-0.5 rounded-full font-bold font-mono text-[11px] ${
-                    editPartPrice > 0 && Math.round(((editPartPrice - editPartCost) / editPartPrice) * 100) >= 25
+                    Number(editPartPrice) > 0 && Math.round((((Number(editPartPrice) || 0) - (Number(editPartCost) || 0)) / (Number(editPartPrice) || 1)) * 100) >= 25
                       ? 'bg-emerald-100 text-emerald-800'
                       : 'bg-amber-100 text-amber-800'
                   }`}>
-                    {editPartPrice > 0 ? Math.round(((editPartPrice - editPartCost) / editPartPrice) * 100) : 0}% Gross Margin
+                    {Number(editPartPrice) > 0 ? Math.round((((Number(editPartPrice) || 0) - (Number(editPartCost) || 0)) / (Number(editPartPrice) || 1)) * 100) : 0}% Gross Margin
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className="text-workshop-muted">Gross Profit per unit:</span>
                   <span className="font-mono font-bold text-emerald-700 text-sm">
-                    ₹{(editPartPrice - editPartCost).toLocaleString('en-IN')}
+                    ₹{((Number(editPartPrice) || 0) - (Number(editPartCost) || 0)).toLocaleString('en-IN')}
                   </span>
                 </div>
 
@@ -886,8 +895,9 @@ export const CatalogsPage: React.FC = () => {
                         key={pct}
                         type="button"
                         onClick={() => {
-                          if (editPartCost > 0) {
-                            setEditPartPrice(Math.round(editPartCost / (1 - pct / 100)));
+                          const cost = Number(editPartCost) || 0;
+                          if (cost > 0) {
+                            setEditPartPrice(Math.round(cost / (1 - pct / 100)));
                           }
                         }}
                         className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-mono font-semibold transition cursor-pointer"

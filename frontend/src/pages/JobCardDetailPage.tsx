@@ -172,8 +172,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
   // Add Labour Modal state
   const [showAddLabourModal, setShowAddLabourModal] = useState(false);
   const [labourDesc, setLabourDesc] = useState('');
-  const [labourRate, setLabourRate] = useState<number>(500);
-  const [labourCost, setLabourCost] = useState<number>(0);
+  const [labourRate, setLabourRate] = useState<number | string>('');
+  const [labourCost, setLabourCost] = useState<number | string>('');
   const [labourSac, setLabourSac] = useState('998729');
   const [labourGst, setLabourGst] = useState<number>(18);
   const [labourQty, setLabourQty] = useState<number>(1);
@@ -185,8 +185,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [partDesc, setPartDesc] = useState('');
   const [partNumber, setPartNumber] = useState('');
   const [partUnit, setPartUnit] = useState('pcs');
-  const [partPrice, setPartPrice] = useState<number>(500);
-  const [partCost, setPartCost] = useState<number>(0);
+  const [partPrice, setPartPrice] = useState<number | string>('');
+  const [partCost, setPartCost] = useState<number | string>('');
   const [partHsn, setPartHsn] = useState('8708');
   const [partGst, setPartGst] = useState<number>(18);
   const [partQty, setPartQty] = useState<number>(1);
@@ -197,8 +197,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [editLabourItem, setEditLabourItem] = useState<any | null>(null);
   const [editLabourDesc, setEditLabourDesc] = useState('');
   const [editLabourQty, setEditLabourQty] = useState<number>(1);
-  const [editLabourRate, setEditLabourRate] = useState<number>(0);
-  const [editLabourCost, setEditLabourCost] = useState<number>(0);
+  const [editLabourRate, setEditLabourRate] = useState<number | string>('');
+  const [editLabourCost, setEditLabourCost] = useState<number | string>('');
   const [editLabourSac, setEditLabourSac] = useState('998729');
   const [editLabourGst, setEditLabourGst] = useState<number>(18);
   const [editLabourStatus, setEditLabourStatus] = useState<string>('APPROVED');
@@ -209,24 +209,27 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [editPartNumber, setEditPartNumber] = useState('');
   const [editPartUnit, setEditPartUnit] = useState('pcs');
   const [editPartQty, setEditPartQty] = useState<number>(1);
-  const [editPartPrice, setEditPartPrice] = useState<number>(0);
-  const [editPartCost, setEditPartCost] = useState<number>(0);
+  const [editPartPrice, setEditPartPrice] = useState<number | string>('');
+  const [editPartCost, setEditPartCost] = useState<number | string>('');
   const [editPartHsn, setEditPartHsn] = useState('8708');
   const [editPartGst, setEditPartGst] = useState<number>(18);
   const [editPartStatus, setEditPartStatus] = useState<string>('APPROVED');
 
-  const calcMarginPct = (selling: number, cost: number) => {
-    if (!selling || selling <= 0) return 0;
-    return Math.round(((selling - cost) / selling) * 100);
+  const calcMarginPct = (selling: number | string, cost: number | string) => {
+    const s = Number(selling) || 0;
+    const c = Number(cost) || 0;
+    if (s <= 0) return 0;
+    return Math.round(((s - c) / s) * 100);
   };
 
   const applyTargetMargin = (
-    cost: number,
+    cost: number | string,
     pct: number,
-    setSelling: (val: number) => void
+    setSelling: (val: number | string) => void
   ) => {
-    if (cost <= 0) return;
-    const target = Math.round(cost / (1 - pct / 100));
+    const c = Number(cost) || 0;
+    if (c <= 0) return;
+    const target = Math.round(c / (1 - pct / 100));
     setSelling(target);
   };
 
@@ -452,8 +455,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
         body: JSON.stringify({
           description: labourDesc.trim(),
           quantity: Number(labourQty) || 1,
-          unit_price: Math.round(labourRate * 100),
-          cost_price: Math.round(labourCost * 100),
+          unit_price: Math.round(Number(labourRate || 0) * 100),
+          cost_price: Math.round(Number(labourCost || 0) * 100),
           sac_code: labourSac.trim() || '998729',
           gst_rate: Number(labourGst),
           status: labourStatus,
@@ -461,8 +464,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
         }),
       });
       setLabourDesc('');
-      setLabourRate(500);
-      setLabourCost(0);
+      setLabourRate('');
+      setLabourCost('');
       setLabourSac('998729');
       setLabourGst(18);
       setLabourQty(1);
@@ -485,8 +488,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
           part_number: partNumber.trim() || undefined,
           unit: partUnit,
           quantity: Number(partQty) || 1,
-          unit_price: Math.round(partPrice * 100),
-          cost_price: Math.round(partCost * 100),
+          unit_price: Math.round(Number(partPrice || 0) * 100),
+          cost_price: Math.round(Number(partCost || 0) * 100),
           hsn_code: partHsn.trim() || '8708',
           gst_rate: Number(partGst),
           status: partStatus,
@@ -495,8 +498,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setPartDesc('');
       setPartNumber('');
-      setPartPrice(500);
-      setPartCost(0);
+      setPartPrice('');
+      setPartCost('');
       setPartHsn('8708');
       setPartGst(18);
       setPartQty(1);
@@ -513,8 +516,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
     setEditLabourItem(l);
     setEditLabourDesc(l.description || '');
     setEditLabourQty(l.quantity || 1);
-    setEditLabourRate((l.unit_price || 0) / 100);
-    setEditLabourCost((l.cost_price || 0) / 100);
+    setEditLabourRate(((l.unit_price || 0) / 100) || '');
+    setEditLabourCost(((l.cost_price || 0) / 100) || '');
     setEditLabourSac(l.sac_code || '998729');
     setEditLabourGst(l.gst_rate !== undefined ? l.gst_rate : 18);
     setEditLabourStatus(l.status || 'APPROVED');
@@ -529,8 +532,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
         body: JSON.stringify({
           description: editLabourDesc.trim(),
           quantity: Number(editLabourQty) || 1,
-          unit_price: Math.round(editLabourRate * 100),
-          cost_price: Math.round(editLabourCost * 100),
+          unit_price: Math.round(Number(editLabourRate || 0) * 100),
+          cost_price: Math.round(Number(editLabourCost || 0) * 100),
           sac_code: editLabourSac.trim() || '998729',
           gst_rate: Number(editLabourGst),
           status: editLabourStatus,
@@ -549,8 +552,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
     setEditPartNumber(p.part_number || '');
     setEditPartUnit(p.unit || 'pcs');
     setEditPartQty(p.quantity || 1);
-    setEditPartPrice((p.unit_price || 0) / 100);
-    setEditPartCost((p.cost_price || p.purchase_cost || 0) / 100);
+    setEditPartPrice(((p.unit_price || 0) / 100) || '');
+    setEditPartCost(((p.cost_price || p.purchase_cost || 0) / 100) || '');
     setEditPartHsn(p.hsn_code || '8708');
     setEditPartGst(p.gst_rate !== undefined ? p.gst_rate : 18);
     setEditPartStatus(p.status || 'APPROVED');
@@ -567,8 +570,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
           part_number: editPartNumber.trim() || undefined,
           unit: editPartUnit,
           quantity: Number(editPartQty) || 1,
-          unit_price: Math.round(editPartPrice * 100),
-          cost_price: Math.round(editPartCost * 100),
+          unit_price: Math.round(Number(editPartPrice || 0) * 100),
+          cost_price: Math.round(Number(editPartCost || 0) * 100),
           hsn_code: editPartHsn.trim() || '8708',
           gst_rate: Number(editPartGst),
           status: editPartStatus,
@@ -1624,9 +1627,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
+                    placeholder="0"
                     required
-                    value={labourRate}
-                    onChange={(e) => setLabourRate(Number(e.target.value))}
+                    value={labourRate === 0 || labourRate === '0' || labourRate === '' ? '' : labourRate}
+                    onChange={(e) => setLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -1770,9 +1774,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
+                    placeholder="0"
                     required
-                    value={partPrice}
-                    onChange={(e) => setPartPrice(Number(e.target.value))}
+                    value={partPrice === 0 || partPrice === '0' || partPrice === '' ? '' : partPrice}
+                    onChange={(e) => setPartPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -1874,9 +1879,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
+                    placeholder="0"
                     required
-                    value={editLabourRate}
-                    onChange={(e) => setEditLabourRate(Number(e.target.value))}
+                    value={editLabourRate === 0 || editLabourRate === '0' || editLabourRate === '' ? '' : editLabourRate}
+                    onChange={(e) => setEditLabourRate(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -1886,8 +1892,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
-                    value={editLabourCost}
-                    onChange={(e) => setEditLabourCost(Number(e.target.value))}
+                    placeholder="0"
+                    value={editLabourCost === 0 || editLabourCost === '0' || editLabourCost === '' ? '' : editLabourCost}
+                    onChange={(e) => setEditLabourCost(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -1897,8 +1904,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
               <div className="p-2.5 rounded-lg bg-gray-50 border border-workshop-border-soft flex items-center justify-between text-xs">
                 <div>
                   <span className="text-workshop-muted block text-[10px]">Gross Profit / Margin</span>
-                  <span className={`font-mono font-bold ${editLabourRate - editLabourCost >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                    ₹{(editLabourRate - editLabourCost).toFixed(2)} ({calcMarginPct(editLabourRate, editLabourCost)}%)
+                  <span className={`font-mono font-bold ${(Number(editLabourRate) || 0) - (Number(editLabourCost) || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    ₹{((Number(editLabourRate) || 0) - (Number(editLabourCost) || 0)).toFixed(2)} ({calcMarginPct(editLabourRate, editLabourCost)}%)
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -2053,9 +2060,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
+                    placeholder="0"
                     required
-                    value={editPartPrice}
-                    onChange={(e) => setEditPartPrice(Number(e.target.value))}
+                    value={editPartPrice === 0 || editPartPrice === '0' || editPartPrice === '' ? '' : editPartPrice}
+                    onChange={(e) => setEditPartPrice(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -2065,8 +2073,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
                     type="number"
                     step="any"
                     min="0"
-                    value={editPartCost}
-                    onChange={(e) => setEditPartCost(Number(e.target.value))}
+                    placeholder="0"
+                    value={editPartCost === 0 || editPartCost === '0' || editPartCost === '' ? '' : editPartCost}
+                    onChange={(e) => setEditPartCost(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
                   />
                 </div>
@@ -2076,8 +2085,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
               <div className="p-2.5 rounded-lg bg-gray-50 border border-workshop-border-soft flex items-center justify-between text-xs">
                 <div>
                   <span className="text-workshop-muted block text-[10px]">Gross Profit / Margin</span>
-                  <span className={`font-mono font-bold ${editPartPrice - editPartCost >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                    ₹{(editPartPrice - editPartCost).toFixed(2)} ({calcMarginPct(editPartPrice, editPartCost)}%)
+                  <span className={`font-mono font-bold ${(Number(editPartPrice) || 0) - (Number(editPartCost) || 0) >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    ₹{((Number(editPartPrice) || 0) - (Number(editPartCost) || 0)).toFixed(2)} ({calcMarginPct(editPartPrice, editPartCost)}%)
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
