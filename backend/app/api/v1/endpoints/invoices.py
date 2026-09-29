@@ -161,17 +161,32 @@ def get_invoice_detail(
 
     # Approved lines
     approved_parts = [
-        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
+        {
+            "id": p.id, "description": p.description, "part_number": p.part_number,
+            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+            "total": p.total, "status": p.status
+        }
         for p in jc.parts_items if p.status in ("APPROVED", "USED")
     ] if jc else []
 
     recommended_parts = [
-        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
+        {
+            "id": p.id, "description": p.description, "part_number": p.part_number,
+            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+            "total": p.total, "status": p.status
+        }
         for p in jc.parts_items if p.status == "RECOMMENDED"
     ] if jc else []
 
     rejected_parts = [
-        {"id": p.id, "description": p.description, "part_number": p.part_number, "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price, "total": p.total, "status": p.status}
+        {
+            "id": p.id, "description": p.description, "part_number": p.part_number,
+            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+            "total": p.total, "status": p.status
+        }
         for p in jc.parts_items if p.status == "REJECTED"
     ] if jc else []
     
@@ -182,17 +197,32 @@ def get_invoice_detail(
     ] if jc else []
 
     approved_labour = [
-        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
+        {
+            "id": l.id, "description": l.description, "quantity": l.quantity,
+            "unit_price": l.unit_price, "cost_price": l.cost_price,
+            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+            "total": l.total, "status": l.status
+        }
         for l in jc.labour_items if l.status in ("APPROVED", "DONE")
     ] if jc else []
 
     recommended_labour = [
-        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
+        {
+            "id": l.id, "description": l.description, "quantity": l.quantity,
+            "unit_price": l.unit_price, "cost_price": l.cost_price,
+            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+            "total": l.total, "status": l.status
+        }
         for l in jc.labour_items if l.status == "RECOMMENDED"
     ] if jc else []
 
     rejected_labour = [
-        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "total": l.total, "status": l.status}
+        {
+            "id": l.id, "description": l.description, "quantity": l.quantity,
+            "unit_price": l.unit_price, "cost_price": l.cost_price,
+            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+            "total": l.total, "status": l.status
+        }
         for l in jc.labour_items if l.status == "REJECTED"
     ] if jc else []
 

@@ -307,6 +307,9 @@ def get_job_card_detail(
                 "description": l.description,
                 "quantity": l.quantity,
                 "unit_price": l.unit_price,
+                "cost_price": l.cost_price,
+                "sac_code": l.sac_code,
+                "gst_rate": l.gst_rate,
                 "total": l.total,
                 "status": l.status,
                 "catalog_id": l.catalog_id
@@ -320,6 +323,10 @@ def get_job_card_detail(
                 "unit": p.unit,
                 "quantity": p.quantity,
                 "unit_price": p.unit_price,
+                "cost_price": p.cost_price,
+                "purchase_cost": p.cost_price,
+                "hsn_code": p.hsn_code,
+                "gst_rate": p.gst_rate,
                 "total": p.total,
                 "status": p.status,
                 "catalog_id": p.catalog_id

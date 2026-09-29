@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Wrench, Plus, Trash2 } from 'lucide-react';
+import { Package, Wrench, Plus, Trash2, Pencil, X, Sparkles, Percent } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { formatINR } from '../lib/formatters';
 import { useAuth } from '../context/AuthContext';
@@ -18,6 +18,15 @@ export const CatalogsPage: React.FC = () => {
   const [newLabourSac, setNewLabourSac] = useState('998729');
   const [newLabourGst, setNewLabourGst] = useState<number>(18);
 
+  // Edit labour modal state
+  const [editingLabour, setEditingLabour] = useState<any | null>(null);
+  const [editLabourName, setEditLabourName] = useState('');
+  const [editLabourRate, setEditLabourRate] = useState<number>(0);
+  const [editLabourCost, setEditLabourCost] = useState<number>(0);
+  const [editLabourSac, setEditLabourSac] = useState('');
+  const [editLabourGst, setEditLabourGst] = useState<number>(18);
+  const [editLabourSaving, setEditLabourSaving] = useState(false);
+
   // New part form
   const [newPartName, setNewPartName] = useState('');
   const [newPartNumber, setNewPartNumber] = useState('');
@@ -26,6 +35,17 @@ export const CatalogsPage: React.FC = () => {
   const [newPartCost, setNewPartCost] = useState<number>(300);
   const [newPartHsn, setNewPartHsn] = useState('8708');
   const [newPartGst, setNewPartGst] = useState<number>(18);
+
+  // Edit part modal state
+  const [editingPart, setEditingPart] = useState<any | null>(null);
+  const [editPartName, setEditPartName] = useState('');
+  const [editPartNumber, setEditPartNumber] = useState('');
+  const [editPartUnit, setEditPartUnit] = useState('pcs');
+  const [editPartPrice, setEditPartPrice] = useState<number>(0);
+  const [editPartCost, setEditPartCost] = useState<number>(0);
+  const [editPartHsn, setEditPartHsn] = useState('');
+  const [editPartGst, setEditPartGst] = useState<number>(18);
+  const [editPartSaving, setEditPartSaving] = useState(false);
 
   const fetchCatalogs = async () => {
     try {
@@ -46,6 +66,77 @@ export const CatalogsPage: React.FC = () => {
   useEffect(() => {
     fetchCatalogs();
   }, []);
+
+  const handleOpenEditLabour = (item: any) => {
+    setEditingLabour(item);
+    setEditLabourName(item.name);
+    setEditLabourRate(Math.round((item.default_rate || 0) / 100));
+    setEditLabourCost(Math.round((item.cost_price || 0) / 100));
+    setEditLabourSac(item.sac_code || '998729');
+    setEditLabourGst(item.gst_rate ?? 18);
+  };
+
+  const handleSaveEditLabour = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLabour || !editLabourName.trim()) return;
+    try {
+      setEditLabourSaving(true);
+      await apiRequest(`/catalogs/labour/${editingLabour.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editLabourName.trim(),
+          default_rate: Math.round(Number(editLabourRate) * 100),
+          cost_price: Math.round(Number(editLabourCost) * 100),
+          sac_code: editLabourSac.trim() || '998729',
+          gst_rate: Number(editLabourGst) || 18,
+        }),
+      });
+      setEditingLabour(null);
+      fetchCatalogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update labour item');
+    } finally {
+      setEditLabourSaving(false);
+    }
+  };
+
+  const handleOpenEditPart = (item: any) => {
+    setEditingPart(item);
+    setEditPartName(item.name);
+    setEditPartNumber(item.part_number || '');
+    setEditPartUnit(item.unit || 'pcs');
+    setEditPartPrice(Math.round((item.default_price || 0) / 100));
+    setEditPartCost(Math.round((item.purchase_cost || item.cost_price || 0) / 100));
+    setEditPartHsn(item.hsn_code || '8708');
+    setEditPartGst(item.gst_rate ?? 18);
+  };
+
+  const handleSaveEditPart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPart || !editPartName.trim()) return;
+    try {
+      setEditPartSaving(true);
+      await apiRequest(`/catalogs/parts/${editingPart.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editPartName.trim(),
+          part_number: editPartNumber.trim() || undefined,
+          unit: editPartUnit,
+          default_price: Math.round(Number(editPartPrice) * 100),
+          purchase_cost: Math.round(Number(editPartCost) * 100),
+          cost_price: Math.round(Number(editPartCost) * 100),
+          hsn_code: editPartHsn.trim() || '8708',
+          gst_rate: Number(editPartGst) || 18,
+        }),
+      });
+      setEditingPart(null);
+      fetchCatalogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update part item');
+    } finally {
+      setEditPartSaving(false);
+    }
+  };
 
   const handleAddLabour = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,9 +278,22 @@ export const CatalogsPage: React.FC = () => {
                         </td>
                         <td className="px-3 py-3 text-center">
                           {user?.role === 'ADMIN' && (
-                            <button onClick={() => handleDeleteLabour(l.id)} className="text-workshop-muted hover:text-workshop-red p-1 cursor-pointer">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditLabour(l)}
+                                className="text-workshop-muted hover:text-brand p-1.5 hover:bg-blue-50 rounded transition cursor-pointer"
+                                title="Edit rate, cost & margin"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteLabour(l.id)}
+                                className="text-workshop-muted hover:text-workshop-red p-1.5 hover:bg-red-50 rounded transition cursor-pointer"
+                                title="Deactivate item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -242,6 +346,26 @@ export const CatalogsPage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* Dynamic Margin Indicator for Add Form */}
+                {newLabourRate > 0 && (
+                  <div className="p-2 bg-blue-50/60 rounded-lg border border-blue-100 flex items-center justify-between text-xs">
+                    <span className="text-workshop-muted font-medium">Estimated Margin:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-workshop-text font-semibold">
+                        Profit: ₹{Math.max(0, newLabourRate - newLabourCost)}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded font-bold font-mono text-[11px] ${
+                        Math.round(((newLabourRate - newLabourCost) / newLabourRate) * 100) >= 40
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {Math.round(((newLabourRate - newLabourCost) / newLabourRate) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-semibold text-workshop-text mb-1">SAC Code</label>
@@ -293,7 +417,7 @@ export const CatalogsPage: React.FC = () => {
                     <th className="px-3 py-3 text-right">Purchase (₹)</th>
                     <th className="px-4 py-3 text-right">Selling Price</th>
                     <th className="px-3 py-3 text-right">Margin %</th>
-                    <th className="px-3 py-3 text-center w-12">Action</th>
+                    <th className="px-3 py-3 text-center w-16">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-workshop-border-soft">
@@ -320,9 +444,22 @@ export const CatalogsPage: React.FC = () => {
                         </td>
                         <td className="px-3 py-3 text-center">
                           {user?.role === 'ADMIN' && (
-                            <button onClick={() => handleDeletePart(p.id)} className="text-workshop-muted hover:text-workshop-red p-1 cursor-pointer">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditPart(p)}
+                                className="text-workshop-muted hover:text-brand p-1.5 hover:bg-blue-50 rounded transition cursor-pointer"
+                                title="Edit price, cost & margin"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePart(p.id)}
+                                className="text-workshop-muted hover:text-workshop-red p-1.5 hover:bg-red-50 rounded transition cursor-pointer"
+                                title="Deactivate item"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -412,6 +549,26 @@ export const CatalogsPage: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* Dynamic Margin Indicator for Add Form */}
+                {newPartPrice > 0 && (
+                  <div className="p-2 bg-blue-50/60 rounded-lg border border-blue-100 flex items-center justify-between text-xs">
+                    <span className="text-workshop-muted font-medium">Estimated Margin:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-workshop-text font-semibold">
+                        Profit: ₹{Math.max(0, newPartPrice - newPartCost)}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded font-bold font-mono text-[11px] ${
+                        Math.round(((newPartPrice - newPartCost) / newPartPrice) * 100) >= 30
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {Math.round(((newPartPrice - newPartCost) / newPartPrice) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-semibold text-workshop-text mb-1">GST Rate %</label>
                   <select
@@ -435,6 +592,359 @@ export const CatalogsPage: React.FC = () => {
               </form>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Labour Modal */}
+      {editingLabour && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-workshop-border shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 border-b border-workshop-border bg-gradient-to-r from-blue-50 to-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-blue-100 text-brand rounded-lg">
+                  <Wrench className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="font-display font-bold text-base text-workshop-text">
+                    Edit Labour Service
+                  </h3>
+                  <p className="text-[11px] text-workshop-muted">
+                    Update rate, payout cost, SAC code, or target margin
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingLabour(null)}
+                className="p-1.5 text-workshop-muted hover:text-workshop-text rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditLabour} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Service Description *</label>
+                <input
+                  type="text"
+                  required
+                  value={editLabourName}
+                  onChange={(e) => setEditLabourName(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">
+                    Mechanic Payout / Cost (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editLabourCost}
+                    onChange={(e) => setEditLabourCost(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                    title="Estimated mechanic cost or contractor payout"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">
+                    Selling Rate (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={editLabourRate}
+                    onChange={(e) => setEditLabourRate(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono font-bold text-brand-deep"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time Profit & Margin Calculator */}
+              <div className="p-3 bg-gradient-to-r from-emerald-50/60 to-blue-50/60 rounded-xl border border-emerald-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-workshop-text uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    Live Profitability &amp; Margin
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full font-bold font-mono text-[11px] ${
+                    editLabourRate > 0 && Math.round(((editLabourRate - editLabourCost) / editLabourRate) * 100) >= 40
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {editLabourRate > 0 ? Math.round(((editLabourRate - editLabourCost) / editLabourRate) * 100) : 0}% Gross Margin
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <span className="text-workshop-muted">Gross Profit per job:</span>
+                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                    ₹{(editLabourRate - editLabourCost).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {/* Quick Target Margin Buttons */}
+                <div className="pt-2 border-t border-emerald-100/70 flex items-center justify-between">
+                  <span className="text-[10px] text-workshop-muted font-medium">Quick target margin:</span>
+                  <div className="flex items-center gap-1">
+                    {[25, 35, 50, 60].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          if (editLabourCost > 0) {
+                            setEditLabourRate(Math.round(editLabourCost / (1 - pct / 100)));
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-mono font-semibold transition cursor-pointer"
+                        title={`Auto-calculate selling rate for ${pct}% margin`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">SAC Code</label>
+                  <input
+                    type="text"
+                    value={editLabourSac}
+                    onChange={(e) => setEditLabourSac(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">GST Rate %</label>
+                  <select
+                    value={editLabourGst}
+                    onChange={(e) => setEditLabourGst(Number(e.target.value))}
+                    className="w-full px-2 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value={18}>18% (Standard Labour)</option>
+                    <option value={28}>28%</option>
+                    <option value={12}>12%</option>
+                    <option value={5}>5%</option>
+                    <option value={0}>0% (Exempt)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-workshop-border-soft flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingLabour(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-workshop-text rounded-lg font-semibold cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLabourSaving}
+                  className="px-4 py-2 bg-brand hover:bg-brand-deep text-white rounded-lg font-semibold shadow-xs cursor-pointer transition"
+                >
+                  {editLabourSaving ? 'Saving...' : 'Update Labour Service'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Part Modal */}
+      {editingPart && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-workshop-border shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-4 border-b border-workshop-border bg-gradient-to-r from-blue-50 to-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-blue-100 text-brand rounded-lg">
+                  <Package className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="font-display font-bold text-base text-workshop-text">
+                    Edit Spare Part Price &amp; Margin
+                  </h3>
+                  <p className="text-[11px] text-workshop-muted">
+                    Update wholesale cost, customer selling price, or target margin
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingPart(null)}
+                className="p-1.5 text-workshop-muted hover:text-workshop-text rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPart} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Part Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editPartName}
+                  onChange={(e) => setEditPartName(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Part Number</label>
+                  <input
+                    type="text"
+                    value={editPartNumber}
+                    onChange={(e) => setEditPartNumber(e.target.value)}
+                    placeholder="e.g. BP-FRONT-12"
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Unit</label>
+                  <select
+                    value={editPartUnit}
+                    onChange={(e) => setEditPartUnit(e.target.value)}
+                    className="w-full px-2 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="pcs">pcs</option>
+                    <option value="litre">litre</option>
+                    <option value="set">set</option>
+                    <option value="can">can</option>
+                    <option value="kg">kg</option>
+                    <option value="metre">metre</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">
+                    Purchase Cost (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editPartCost}
+                    onChange={(e) => setEditPartCost(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono"
+                    title="Wholesale purchase cost from supplier"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">
+                    Selling Price (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={editPartPrice}
+                    onChange={(e) => setEditPartPrice(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono font-bold text-brand-deep"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time Profit & Margin Calculator */}
+              <div className="p-3 bg-gradient-to-r from-emerald-50/60 to-blue-50/60 rounded-xl border border-emerald-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-workshop-text uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    Live Profitability &amp; Margin
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full font-bold font-mono text-[11px] ${
+                    editPartPrice > 0 && Math.round(((editPartPrice - editPartCost) / editPartPrice) * 100) >= 25
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {editPartPrice > 0 ? Math.round(((editPartPrice - editPartCost) / editPartPrice) * 100) : 0}% Gross Margin
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <span className="text-workshop-muted">Gross Profit per unit:</span>
+                  <span className="font-mono font-bold text-emerald-700 text-sm">
+                    ₹{(editPartPrice - editPartCost).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                {/* Quick Target Margin Buttons */}
+                <div className="pt-2 border-t border-emerald-100/70 flex items-center justify-between">
+                  <span className="text-[10px] text-workshop-muted font-medium">Quick target margin:</span>
+                  <div className="flex items-center gap-1">
+                    {[15, 20, 30, 40, 50].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          if (editPartCost > 0) {
+                            setEditPartPrice(Math.round(editPartCost / (1 - pct / 100)));
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded text-[10px] font-mono font-semibold transition cursor-pointer"
+                        title={`Auto-calculate selling price for ${pct}% margin`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">HSN Code</label>
+                  <input
+                    type="text"
+                    value={editPartHsn}
+                    onChange={(e) => setEditPartHsn(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">GST Rate %</label>
+                  <select
+                    value={editPartGst}
+                    onChange={(e) => setEditPartGst(Number(e.target.value))}
+                    className="w-full px-2 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value={18}>18% (Standard Auto Parts)</option>
+                    <option value={28}>28% (Batteries, Tyres, Luxury)</option>
+                    <option value={12}>12%</option>
+                    <option value={5}>5%</option>
+                    <option value={0}>0%</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-workshop-border-soft flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPart(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-workshop-text rounded-lg font-semibold cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editPartSaving}
+                  className="px-4 py-2 bg-brand hover:bg-brand-deep text-white rounded-lg font-semibold shadow-xs cursor-pointer transition"
+                >
+                  {editPartSaving ? 'Saving...' : 'Update Spare Part'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

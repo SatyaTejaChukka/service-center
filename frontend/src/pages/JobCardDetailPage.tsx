@@ -20,7 +20,8 @@ import {
   Trash2,
   Ban,
   UserCheck,
-  RefreshCw
+  RefreshCw,
+  Pencil
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
@@ -78,6 +79,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [showAddLabourModal, setShowAddLabourModal] = useState(false);
   const [labourDesc, setLabourDesc] = useState('');
   const [labourRate, setLabourRate] = useState<number>(500);
+  const [labourCost, setLabourCost] = useState<number>(0);
+  const [labourSac, setLabourSac] = useState('998729');
+  const [labourGst, setLabourGst] = useState<number>(18);
   const [labourQty, setLabourQty] = useState<number>(1);
   const [labourStatus, setLabourStatus] = useState<string>('RECOMMENDED');
   const [labourCatalogId, setLabourCatalogId] = useState<number | undefined>(undefined);
@@ -88,9 +92,49 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [partNumber, setPartNumber] = useState('');
   const [partUnit, setPartUnit] = useState('pcs');
   const [partPrice, setPartPrice] = useState<number>(500);
+  const [partCost, setPartCost] = useState<number>(0);
+  const [partHsn, setPartHsn] = useState('8708');
+  const [partGst, setPartGst] = useState<number>(18);
   const [partQty, setPartQty] = useState<number>(1);
   const [partStatus, setPartStatus] = useState<string>('RECOMMENDED');
   const [partCatalogId, setPartCatalogId] = useState<number | undefined>(undefined);
+
+  // Edit Labour Modal state
+  const [editLabourItem, setEditLabourItem] = useState<any | null>(null);
+  const [editLabourDesc, setEditLabourDesc] = useState('');
+  const [editLabourQty, setEditLabourQty] = useState<number>(1);
+  const [editLabourRate, setEditLabourRate] = useState<number>(0);
+  const [editLabourCost, setEditLabourCost] = useState<number>(0);
+  const [editLabourSac, setEditLabourSac] = useState('998729');
+  const [editLabourGst, setEditLabourGst] = useState<number>(18);
+  const [editLabourStatus, setEditLabourStatus] = useState<string>('APPROVED');
+
+  // Edit Part Modal state
+  const [editPartItem, setEditPartItem] = useState<any | null>(null);
+  const [editPartDesc, setEditPartDesc] = useState('');
+  const [editPartNumber, setEditPartNumber] = useState('');
+  const [editPartUnit, setEditPartUnit] = useState('pcs');
+  const [editPartQty, setEditPartQty] = useState<number>(1);
+  const [editPartPrice, setEditPartPrice] = useState<number>(0);
+  const [editPartCost, setEditPartCost] = useState<number>(0);
+  const [editPartHsn, setEditPartHsn] = useState('8708');
+  const [editPartGst, setEditPartGst] = useState<number>(18);
+  const [editPartStatus, setEditPartStatus] = useState<string>('APPROVED');
+
+  const calcMarginPct = (selling: number, cost: number) => {
+    if (!selling || selling <= 0) return 0;
+    return Math.round(((selling - cost) / selling) * 100);
+  };
+
+  const applyTargetMargin = (
+    cost: number,
+    pct: number,
+    setSelling: (val: number) => void
+  ) => {
+    if (cost <= 0) return;
+    const target = Math.round(cost / (1 - pct / 100));
+    setSelling(target);
+  };
 
   // Customer Approval Modal state
   const [showApprovalModal, setShowApprovalModal] = useState(false);
@@ -276,12 +320,18 @@ export const JobCardDetailPage: React.FC<Props> = ({
           description: labourDesc.trim(),
           quantity: Number(labourQty) || 1,
           unit_price: Math.round(labourRate * 100),
+          cost_price: Math.round(labourCost * 100),
+          sac_code: labourSac.trim() || '998729',
+          gst_rate: Number(labourGst),
           status: labourStatus,
           catalog_id: labourCatalogId || undefined,
         }),
       });
       setLabourDesc('');
       setLabourRate(500);
+      setLabourCost(0);
+      setLabourSac('998729');
+      setLabourGst(18);
       setLabourQty(1);
       setLabourCatalogId(undefined);
       setShowAddLabourModal(false);
@@ -303,6 +353,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
           unit: partUnit,
           quantity: Number(partQty) || 1,
           unit_price: Math.round(partPrice * 100),
+          cost_price: Math.round(partCost * 100),
+          hsn_code: partHsn.trim() || '8708',
+          gst_rate: Number(partGst),
           status: partStatus,
           catalog_id: partCatalogId || undefined,
         }),
@@ -310,6 +363,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       setPartDesc('');
       setPartNumber('');
       setPartPrice(500);
+      setPartCost(0);
+      setPartHsn('8708');
+      setPartGst(18);
       setPartQty(1);
       setPartUnit('pcs');
       setPartCatalogId(undefined);
@@ -317,6 +373,78 @@ export const JobCardDetailPage: React.FC<Props> = ({
       fetchDetail();
     } catch (err: any) {
       alert(err.message || 'Failed to add part item');
+    }
+  };
+
+  const handleOpenEditLabour = (l: any) => {
+    setEditLabourItem(l);
+    setEditLabourDesc(l.description || '');
+    setEditLabourQty(l.quantity || 1);
+    setEditLabourRate((l.unit_price || 0) / 100);
+    setEditLabourCost((l.cost_price || 0) / 100);
+    setEditLabourSac(l.sac_code || '998729');
+    setEditLabourGst(l.gst_rate !== undefined ? l.gst_rate : 18);
+    setEditLabourStatus(l.status || 'APPROVED');
+  };
+
+  const handleSaveEditLabour = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editLabourItem) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/labour-items/${editLabourItem.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          description: editLabourDesc.trim(),
+          quantity: Number(editLabourQty) || 1,
+          unit_price: Math.round(editLabourRate * 100),
+          cost_price: Math.round(editLabourCost * 100),
+          sac_code: editLabourSac.trim() || '998729',
+          gst_rate: Number(editLabourGst),
+          status: editLabourStatus,
+        }),
+      });
+      setEditLabourItem(null);
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update service line');
+    }
+  };
+
+  const handleOpenEditPart = (p: any) => {
+    setEditPartItem(p);
+    setEditPartDesc(p.description || '');
+    setEditPartNumber(p.part_number || '');
+    setEditPartUnit(p.unit || 'pcs');
+    setEditPartQty(p.quantity || 1);
+    setEditPartPrice((p.unit_price || 0) / 100);
+    setEditPartCost((p.cost_price || p.purchase_cost || 0) / 100);
+    setEditPartHsn(p.hsn_code || '8708');
+    setEditPartGst(p.gst_rate !== undefined ? p.gst_rate : 18);
+    setEditPartStatus(p.status || 'APPROVED');
+  };
+
+  const handleSaveEditPart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editPartItem) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/parts-items/${editPartItem.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          description: editPartDesc.trim(),
+          part_number: editPartNumber.trim() || undefined,
+          unit: editPartUnit,
+          quantity: Number(editPartQty) || 1,
+          unit_price: Math.round(editPartPrice * 100),
+          cost_price: Math.round(editPartCost * 100),
+          hsn_code: editPartHsn.trim() || '8708',
+          gst_rate: Number(editPartGst),
+          status: editPartStatus,
+        }),
+      });
+      setEditPartItem(null);
+      fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update part item');
     }
   };
 
@@ -764,7 +892,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   <th className="p-2.5 text-right">Qty</th>
                   <th className="p-2.5 text-right">Rate</th>
                   <th className="p-2.5 text-right">Line Total</th>
-                  {canEditItems && <th className="p-2.5 text-right w-36">Actions</th>}
+                  {canEditItems && <th className="p-2.5 text-right w-44">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-workshop-border-soft">
@@ -805,6 +933,14 @@ export const JobCardDetailPage: React.FC<Props> = ({
                       {canEditItems && (
                         <td className="p-2.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditLabour(l)}
+                              className="p-1 text-gray-500 hover:text-brand hover:bg-brand/10 rounded transition cursor-pointer"
+                              title="Edit service rate, payout cost, or details"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
                             {isRejected ? (
                               <button
                                 type="button"
@@ -865,7 +1001,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   <th className="p-2.5 text-right">Qty</th>
                   <th className="p-2.5 text-right">Rate</th>
                   <th className="p-2.5 text-right">Line Total</th>
-                  {canEditItems && <th className="p-2.5 text-right w-36">Actions</th>}
+                  {canEditItems && <th className="p-2.5 text-right w-44">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-workshop-border-soft">
@@ -908,6 +1044,14 @@ export const JobCardDetailPage: React.FC<Props> = ({
                       {canEditItems && (
                         <td className="p-2.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPart(p)}
+                              className="p-1 text-gray-500 hover:text-brand hover:bg-brand/10 rounded transition cursor-pointer"
+                              title="Edit price, cost, margin or details"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
                             {isRejected ? (
                               <button
                                 type="button"
@@ -1185,6 +1329,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
                       if (sel) {
                         setLabourDesc(sel.name);
                         setLabourRate(sel.default_rate / 100);
+                        setLabourCost((sel.cost_price || 0) / 100);
+                        setLabourSac(sel.sac_code || '998729');
+                        setLabourGst(sel.gst_rate !== undefined ? sel.gst_rate : 18);
                         setLabourCatalogId(sel.id);
                       }
                     }}
@@ -1301,6 +1448,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
                         setPartNumber(sel.part_number || '');
                         setPartUnit(sel.unit || 'pcs');
                         setPartPrice(sel.default_price / 100);
+                        setPartCost((sel.purchase_cost || sel.cost_price || 0) / 100);
+                        setPartHsn(sel.hsn_code || '8708');
+                        setPartGst(sel.gst_rate !== undefined ? sel.gst_rate : 18);
                         setPartCatalogId(sel.id);
                       }
                     }}
@@ -1407,6 +1557,338 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
                 >
                   Add Part Item
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Labour Item Modal */}
+      {editLabourItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3">
+              <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-brand" /> Edit Service / Labour Line
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditLabourItem(null)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditLabour} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Service Description *</label>
+                <input
+                  type="text"
+                  required
+                  value={editLabourDesc}
+                  onChange={(e) => setEditLabourDesc(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Qty / Hours *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.1"
+                    required
+                    value={editLabourQty}
+                    onChange={(e) => setEditLabourQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Status</label>
+                  <select
+                    value={editLabourStatus}
+                    onChange={(e) => setEditLabourStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="RECOMMENDED">RECOMMENDED</option>
+                    <option value="APPROVED">APPROVED</option>
+                    <option value="DONE">DONE</option>
+                    <option value="REJECTED">REJECTED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Selling Rate (₹) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    required
+                    value={editLabourRate}
+                    onChange={(e) => setEditLabourRate(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Technician Payout / Cost (₹)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={editLabourCost}
+                    onChange={(e) => setEditLabourCost(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Margin & Profitability Helper */}
+              <div className="p-2.5 rounded-lg bg-gray-50 border border-workshop-border-soft flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-workshop-muted block text-[10px]">Gross Profit / Margin</span>
+                  <span className={`font-mono font-bold ${editLabourRate - editLabourCost >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    ₹{(editLabourRate - editLabourCost).toFixed(2)} ({calcMarginPct(editLabourRate, editLabourCost)}%)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-workshop-muted mr-1">Target Margin:</span>
+                  {[20, 30, 40, 50].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => applyTargetMargin(editLabourCost, m, setEditLabourRate)}
+                      className="px-1.5 py-0.5 rounded bg-white hover:bg-brand hover:text-white border border-gray-200 text-[10px] font-semibold transition cursor-pointer"
+                      title={`Recalibrate rate for ${m}% margin on payout`}
+                    >
+                      {m}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">SAC Code</label>
+                  <input
+                    type="text"
+                    value={editLabourSac}
+                    onChange={(e) => setEditLabourSac(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">GST Rate %</label>
+                  <select
+                    value={editLabourGst}
+                    onChange={(e) => setEditLabourGst(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value={0}>0% (Exempt)</option>
+                    <option value={5}>5%</option>
+                    <option value={12}>12%</option>
+                    <option value={18}>18% (Standard Services)</option>
+                    <option value={28}>28%</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditLabourItem(null)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Part Item Modal */}
+      {editPartItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3">
+              <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                <Package className="w-4 h-4 text-brand" /> Edit Part / Material Line
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditPartItem(null)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditPart} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">Part Name / Description *</label>
+                <input
+                  type="text"
+                  required
+                  value={editPartDesc}
+                  onChange={(e) => setEditPartDesc(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Part Number (Optional)</label>
+                  <input
+                    type="text"
+                    value={editPartNumber}
+                    onChange={(e) => setEditPartNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Unit</label>
+                  <select
+                    value={editPartUnit}
+                    onChange={(e) => setEditPartUnit(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="pcs">pcs</option>
+                    <option value="litre">litre</option>
+                    <option value="set">set</option>
+                    <option value="can">can</option>
+                    <option value="box">box</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.1"
+                    required
+                    value={editPartQty}
+                    onChange={(e) => setEditPartQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Status</label>
+                  <select
+                    value={editPartStatus}
+                    onChange={(e) => setEditPartStatus(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value="RECOMMENDED">RECOMMENDED</option>
+                    <option value="APPROVED">APPROVED</option>
+                    <option value="USED">USED</option>
+                    <option value="REJECTED">REJECTED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Selling Price (₹) *</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    required
+                    value={editPartPrice}
+                    onChange={(e) => setEditPartPrice(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">Purchase / Wholesale Cost (₹)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={editPartCost}
+                    onChange={(e) => setEditPartCost(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Margin & Profitability Helper */}
+              <div className="p-2.5 rounded-lg bg-gray-50 border border-workshop-border-soft flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-workshop-muted block text-[10px]">Gross Profit / Margin</span>
+                  <span className={`font-mono font-bold ${editPartPrice - editPartCost >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                    ₹{(editPartPrice - editPartCost).toFixed(2)} ({calcMarginPct(editPartPrice, editPartCost)}%)
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-workshop-muted mr-1">Target Margin:</span>
+                  {[15, 20, 30, 40, 50].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => applyTargetMargin(editPartCost, m, setEditPartPrice)}
+                      className="px-1.5 py-0.5 rounded bg-white hover:bg-brand hover:text-white border border-gray-200 text-[10px] font-semibold transition cursor-pointer"
+                      title={`Recalibrate selling price for ${m}% margin on cost`}
+                    >
+                      {m}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">HSN Code</label>
+                  <input
+                    type="text"
+                    value={editPartHsn}
+                    onChange={(e) => setEditPartHsn(e.target.value)}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-workshop-text mb-1">GST Rate %</label>
+                  <select
+                    value={editPartGst}
+                    onChange={(e) => setEditPartGst(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs bg-white"
+                  >
+                    <option value={0}>0%</option>
+                    <option value={5}>5%</option>
+                    <option value={12}>12%</option>
+                    <option value={18}>18% (Auto Components)</option>
+                    <option value={28}>28% (Lubricants / Batteries)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setEditPartItem(null)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>

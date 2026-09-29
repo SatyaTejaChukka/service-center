@@ -235,3 +235,143 @@ def test_ca_features_end_to_end():
         assert res_pdf.status_code == 200
         assert "application/pdf" in res_pdf.headers["content-type"]
         assert len(res_pdf.content) > 1000
+
+def test_catalog_item_editing():
+    with TestClient(app) as client:
+        setup_data = {
+            "admin_username": "edit_admin",
+            "admin_password": "password123",
+            "admin_full_name": "Edit Admin",
+            "business_name": "Test Workshop",
+            "business_address": "Test Street",
+            "business_phone": "+91 99999 88888",
+            "business_email": "edit@workshop.com"
+        }
+        res = client.post("/api/v1/auth/setup", json=setup_data)
+        assert res.status_code == 200
+        headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+        # Create part
+        res_p = client.post("/api/v1/catalogs/parts", json={
+            "name": "Brake Pad Front",
+            "part_number": "BP-001",
+            "unit": "set",
+            "default_price": 100000, # ₹1000
+            "purchase_cost": 60000,  # ₹600 (40% margin)
+            "hsn_code": "8708",
+            "gst_rate": 18.0
+        }, headers=headers)
+        assert res_p.status_code == 200
+        part_id = res_p.json()["id"]
+
+        # Edit part selling price, cost price, and margin
+        res_edit_p = client.put(f"/api/v1/catalogs/parts/{part_id}", json={
+            "default_price": 120000, # Updated to ₹1200
+            "purchase_cost": 72000,  # Updated to ₹720
+            "hsn_code": "870899",
+            "gst_rate": 28.0
+        }, headers=headers)
+        assert res_edit_p.status_code == 200
+        updated_part = res_edit_p.json()
+        assert updated_part["default_price"] == 120000
+        assert updated_part["purchase_cost"] == 72000
+        assert updated_part["hsn_code"] == "870899"
+        assert updated_part["gst_rate"] == 28.0
+
+        # Create labour
+        res_l = client.post("/api/v1/catalogs/labour", json={
+            "name": "Wheel Alignment",
+            "default_rate": 35000, # ₹350
+            "cost_price": 10000,   # ₹100
+            "sac_code": "998729",
+            "gst_rate": 18.0
+        }, headers=headers)
+        assert res_l.status_code == 200
+        labour_id = res_l.json()["id"]
+
+        # Edit labour selling rate and cost
+        res_edit_l = client.put(f"/api/v1/catalogs/labour/{labour_id}", json={
+            "default_rate": 45000, # Updated to ₹450
+            "cost_price": 15000,   # Updated to ₹150
+            "sac_code": "998728",
+            "gst_rate": 18.0
+        }, headers=headers)
+        assert res_edit_l.status_code == 200
+        updated_labour = res_edit_l.json()
+        assert updated_labour["default_rate"] == 45000
+        assert updated_labour["cost_price"] == 15000
+        assert updated_labour["sac_code"] == "998728"
+
+    def test_job_card_line_item_editing(self):
+        """Test editing prices, costs, and quantities on active job card lines without deleting."""
+        headers = self.get_admin_token()
+
+        # Create customer & vehicle
+        cust = client.post("/api/v1/customers", json={"name": "Priya Sharma", "phone": "9811223344"}, headers=headers).json()
+        veh = client.post("/api/v1/vehicles", json={"customer_id": cust["id"], "registration_number": "KA04XY9988", "make": "Hyundai", "model": "i20"}, headers=headers).json()
+
+        # Create Job Card
+        jc = client.post("/api/v1/job-cards", json={"customer_id": cust["id"], "vehicle_id": veh["id"], "odometer": 32000}, headers=headers).json()
+        jc_id = jc["id"]
+
+        # Add part line (e.g. initial price ₹500, cost ₹300)
+        part = client.post(f"/api/v1/job-cards/{jc_id}/parts-items", json={
+            "description": "Oil Filter",
+            "quantity": 1.0,
+            "unit_price": 50000,
+            "cost_price": 30000,
+            "status": "APPROVED"
+        }, headers=headers).json()
+        part_id = part["id"]
+
+        # Add labour line (e.g. initial rate ₹800, cost ₹200)
+        labour = client.post(f"/api/v1/job-cards/{jc_id}/labour-items", json={
+            "description": "Oil Replacement Labour",
+            "quantity": 1.0,
+            "unit_price": 80000,
+            "cost_price": 20000,
+            "status": "APPROVED"
+        }, headers=headers).json()
+        labour_id = labour["id"]
+
+        # User changes price/margin: Edit part item to ₹650 selling price, ₹350 cost
+        res_p = client.patch(f"/api/v1/job-cards/{jc_id}/parts-items/{part_id}", json={
+            "unit_price": 65000,
+            "cost_price": 35000,
+            "description": "Oil Filter (OEM Genuine)"
+        }, headers=headers)
+        assert res_p.status_code == 200
+        updated_part = res_p.json()
+        assert updated_part["unit_price"] == 65000
+        assert updated_part["cost_price"] == 35000
+        assert updated_part["total"] == 65000
+
+        # Edit labour item to ₹950 selling rate, ₹250 cost
+        res_l = client.patch(f"/api/v1/job-cards/{jc_id}/labour-items/{labour_id}", json={
+            "unit_price": 95000,
+            "cost_price": 25000
+        }, headers=headers)
+        assert res_l.status_code == 200
+        updated_labour = res_l.json()
+        assert updated_labour["unit_price"] == 95000
+        assert updated_labour["cost_price"] == 25000
+        assert updated_labour["total"] == 95000
+
+        # Verify job card detail returns updated pricing and costs
+        res_jc = client.get(f"/api/v1/job-cards/{jc_id}", headers=headers)
+        assert res_jc.status_code == 200
+        jc_data = res_jc.json()
+        p_item = next(p for p in jc_data["parts_items"] if p["id"] == part_id)
+        assert p_item["unit_price"] == 65000
+        assert p_item["cost_price"] == 35000
+
+        l_item = next(l for l in jc_data["labour_items"] if l["id"] == labour_id)
+        assert l_item["unit_price"] == 95000
+        assert l_item["cost_price"] == 25000
+
+        # Verify draft invoice totals updated automatically to ₹1600 (650 + 950)
+        assert jc_data["invoice"]["parts_total"] == 65000
+        assert jc_data["invoice"]["labour_total"] == 95000
+        assert jc_data["invoice"]["grand_total"] == 160000
+
+

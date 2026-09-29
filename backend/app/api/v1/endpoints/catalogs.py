@@ -54,6 +54,39 @@ def create_labour_catalog_item(
     db.refresh(item)
     return item
 
+@router.put("/labour/{item_id}", response_model=LabourCatalogItem)
+def update_labour_catalog_item(
+    item_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    item = db.query(LabourCatalog).filter(LabourCatalog.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Labour item not found")
+
+    if "name" in data and str(data["name"]).strip():
+        new_name = str(data["name"]).strip()
+        conflict = db.query(LabourCatalog).filter(LabourCatalog.name == new_name, LabourCatalog.id != item_id).first()
+        if conflict:
+            raise HTTPException(status_code=400, detail="Another labour item with this name already exists")
+        item.name = new_name
+    if "default_rate" in data:
+        rate = int(data["default_rate"])
+        if rate < 0:
+            raise HTTPException(status_code=400, detail="Default rate cannot be negative")
+        item.default_rate = rate
+    if "cost_price" in data:
+        item.cost_price = max(0, int(data["cost_price"]))
+    if "sac_code" in data:
+        item.sac_code = str(data["sac_code"]).strip() or "998729"
+    if "gst_rate" in data:
+        item.gst_rate = float(data["gst_rate"])
+
+    db.commit()
+    db.refresh(item)
+    return item
+
 @router.delete("/labour/{item_id}")
 def deactivate_labour_item(item_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     item = db.query(LabourCatalog).filter(LabourCatalog.id == item_id).first()
@@ -117,6 +150,46 @@ def create_parts_catalog_item(
     db.refresh(item)
     return item
 
+@router.put("/parts/{item_id}", response_model=PartsCatalogItem)
+def update_parts_catalog_item(
+    item_id: int,
+    data: dict,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    item = db.query(PartsCatalog).filter(PartsCatalog.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Part item not found")
+
+    if "name" in data and str(data["name"]).strip():
+        new_name = str(data["name"]).strip()
+        conflict = db.query(PartsCatalog).filter(PartsCatalog.name == new_name, PartsCatalog.id != item_id).first()
+        if conflict:
+            raise HTTPException(status_code=400, detail="Another part with this name already exists")
+        item.name = new_name
+    if "part_number" in data:
+        item.part_number = str(data["part_number"]).strip() if data["part_number"] else None
+    if "unit" in data and str(data["unit"]).strip():
+        item.unit = str(data["unit"]).strip()
+    if "default_price" in data:
+        price = int(data["default_price"])
+        if price < 0:
+            raise HTTPException(status_code=400, detail="Default price cannot be negative")
+        item.default_price = price
+    cost = data.get("cost_price", data.get("purchase_cost"))
+    if cost is not None:
+        c_val = max(0, int(cost))
+        item.purchase_cost = c_val
+        item.cost_price = c_val
+    if "hsn_code" in data:
+        item.hsn_code = str(data["hsn_code"]).strip() or "8708"
+    if "gst_rate" in data:
+        item.gst_rate = float(data["gst_rate"])
+
+    db.commit()
+    db.refresh(item)
+    return item
+
 @router.delete("/parts/{item_id}")
 def deactivate_parts_item(item_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     item = db.query(PartsCatalog).filter(PartsCatalog.id == item_id).first()
@@ -125,3 +198,4 @@ def deactivate_parts_item(item_id: int, db: Session = Depends(get_db), admin: Us
     item.is_active = False
     db.commit()
     return {"message": "Part deactivated"}
+
