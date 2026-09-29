@@ -243,15 +243,28 @@ ${wsPhone ? `📞 Accounts Contact: ${wsPhone}` : ''}`;
 }
 
 /**
- * Native wa.me browser opener: opens WhatsApp Web on Desktop or WhatsApp App on Mobile.
+ * Direct WhatsApp opener: opens WhatsApp Web on Desktop or WhatsApp App on Mobile.
+ * NOTE: Meta's wa.me URL shortener (https://wa.me/...) has a known server-side 302 redirect bug
+ * that converts 4-byte UTF-8 emojis into %EF%BF%BD (Unicode Replacement Character U+FFFD ).
+ * Using direct web.whatsapp.com for desktop and api.whatsapp.com for mobile completely bypasses this bug
+ * so that emojis and formatting render cleanly.
  */
-export function openWhatsApp(phone: string | undefined | null, text: string): void {
+export function openWhatsApp(phone: string | undefined | null, text: string, preferWeb: boolean = true): void {
   const cleanPhone = normalizeWhatsAppPhone(phone);
   if (!cleanPhone) {
     alert('No valid phone number provided for WhatsApp communication.');
     return;
   }
   const encodedText = encodeURIComponent(text);
-  const url = `https://wa.me/${cleanPhone}?text=${encodedText}`;
+
+  // Check if running on mobile device (Android / iOS)
+  const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  const url = isMobile
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+    : preferWeb
+    ? `https://web.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+    : `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+
   window.open(url, '_blank', 'noopener,noreferrer');
 }

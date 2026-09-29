@@ -35,8 +35,13 @@ export const WhatsAppPreviewModal: React.FC<WhatsAppPreviewModalProps> = ({
 
   const cleanPhone = normalizeWhatsAppPhone(selectedPhone);
 
-  const handleSend = () => {
-    openWhatsApp(cleanPhone, message);
+  const handleSendWeb = () => {
+    openWhatsApp(cleanPhone, message, true);
+    onClose();
+  };
+
+  const handleSendApp = () => {
+    openWhatsApp(cleanPhone, message, false);
     onClose();
   };
 
@@ -148,11 +153,31 @@ export const WhatsAppPreviewModal: React.FC<WhatsAppPreviewModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleSend}
-              className="flex items-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer active:scale-98"
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-xl border border-gray-200 transition cursor-pointer"
+              title="Copy message text with emojis to clipboard"
             >
-              <Send className="w-4 h-4 fill-white" />
-              Open in WhatsApp
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+              <span>{copied ? 'Copied!' : 'Copy Text'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendApp}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs rounded-xl border border-gray-200 transition cursor-pointer"
+              title="Open via WhatsApp Desktop app or system prompt"
+            >
+              Desktop App
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendWeb}
+              className="flex items-center gap-2 px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer active:scale-98"
+              title="Open directly in WhatsApp Web with all emojis preserved"
+            >
+              <Send className="w-3.5 h-3.5 fill-white" />
+              WhatsApp Web
             </button>
           </div>
         </div>
