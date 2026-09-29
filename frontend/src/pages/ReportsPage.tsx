@@ -486,11 +486,11 @@ export const ReportsPage: React.FC<Props> = ({ initialTab = 'REVENUE', onNavigat
                 </div>
                 <div className="p-2 bg-white/80 rounded-lg border border-emerald-100/80">
                   <span className="text-[10px] text-workshop-muted uppercase block font-semibold">Parts Cost</span>
-                  <span className="font-mono font-bold text-sky-700">{formatINR(revenueData.summary.profit_summary?.parts_cost_paise || 0)}</span>
+                  <span className="font-mono font-bold text-sky-700">{formatINR(revenueData.summary.profit_summary?.parts_cost_paise ?? revenueData.summary.parts_cost_paise ?? 0)}</span>
                 </div>
                 <div className="p-2 bg-white/80 rounded-lg border border-emerald-100/80">
                   <span className="text-[10px] text-workshop-muted uppercase block font-semibold">Labour Cost</span>
-                  <span className="font-mono font-bold text-indigo-700">{formatINR(revenueData.summary.profit_summary?.labour_cost_paise || 0)}</span>
+                  <span className="font-mono font-bold text-indigo-700">{formatINR(revenueData.summary.profit_summary?.labour_cost_paise ?? revenueData.summary.labour_cost_paise ?? 0)}</span>
                 </div>
               </div>
             </div>

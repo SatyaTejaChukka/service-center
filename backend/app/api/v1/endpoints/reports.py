@@ -38,7 +38,15 @@ def build_invoice_export_dicts(invoices: List[Invoice]) -> List[Dict[str, Any]]:
         sgst = inv.sgst_amount or (inv.tax_total // 2)
         igst = inv.igst_amount or 0
         cost = inv.total_cost or 0
-        profit = inv.gross_profit if inv.gross_profit is not None else (inv.grand_total - cost)
+        parts_cost = 0
+        labour_cost = 0
+        if inv.job_card:
+            parts_cost = sum(int((p.cost_price or 0) * (p.quantity or 1)) for p in inv.job_card.parts_items if p.status in ["APPROVED", "USED"])
+            labour_cost = sum(int((l.cost_price or 0) * (l.quantity or 1)) for l in inv.job_card.labour_items if l.status in ["APPROVED", "DONE"])
+        if cost == 0 and (parts_cost + labour_cost) > 0:
+            cost = parts_cost + labour_cost
+
+        profit = inv.gross_profit if inv.gross_profit is not None else (taxable - cost)
         margin = round((profit / inv.grand_total * 100), 2) if inv.grand_total > 0 else 0.0
 
         results.append({
@@ -64,6 +72,8 @@ def build_invoice_export_dicts(invoices: List[Invoice]) -> List[Dict[str, Any]]:
             "tax_total": inv.tax_total,
             "grand_total": inv.grand_total,
             "total_cost": cost,
+            "parts_cost": parts_cost,
+            "labour_cost": labour_cost,
             "gross_profit": profit,
             "margin_percent": margin,
             "amount_paid": paid,
@@ -214,6 +224,8 @@ def get_revenue_overview(
     tax_total_paise = sum(i["tax_total"] for i in invoice_list)
 
     total_cost_paise = sum(i["total_cost"] for i in invoice_list)
+    parts_cost_paise = sum(i.get("parts_cost", 0) for i in invoice_list)
+    labour_cost_paise = sum(i.get("labour_cost", 0) for i in invoice_list)
     gross_profit_paise = sum(i["gross_profit"] for i in invoice_list)
     taxable_paise = sum(i["taxable_amount"] for i in invoice_list)
     cgst_paise = sum(i["cgst_amount"] for i in invoice_list)
@@ -384,6 +396,8 @@ def get_revenue_overview(
             "partially_paid_count": partially_paid_count,
             "unpaid_count": unpaid_count,
             "total_cost_paise": total_cost_paise,
+            "parts_cost_paise": parts_cost_paise,
+            "labour_cost_paise": labour_cost_paise,
             "gross_profit_paise": gross_profit_paise,
             "gross_margin_percent": overall_margin,
             "taxable_amount_paise": taxable_paise,
@@ -392,6 +406,8 @@ def get_revenue_overview(
             "igst_paise": igst_paise,
             "profit_summary": {
                 "total_cost_paise": total_cost_paise,
+                "parts_cost_paise": parts_cost_paise,
+                "labour_cost_paise": labour_cost_paise,
                 "gross_profit_paise": gross_profit_paise,
                 "overall_margin_percent": overall_margin,
                 "gross_margin_percent": overall_margin
