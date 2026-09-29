@@ -15,6 +15,7 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
     alt_phone: '',
     address: '',
     email: '',
+    gstin: '',
     notes: '',
   });
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,7 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
     formData.alt_phone.trim() ||
     formData.address.trim() ||
     formData.email.trim() ||
+    formData.gstin.trim() ||
     formData.notes.trim()
   );
 
@@ -59,6 +61,7 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
       alt_phone: '',
       address: '',
       email: '',
+      gstin: '',
       notes: '',
     });
     setError(null);
@@ -200,6 +203,24 @@ export const NewCustomerModal: React.FC<Props> = ({ isOpen, onClose, onCustomerC
                 placeholder="e.g. Auto Nagar, Vijayawada"
                 className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm focus:outline-none focus:border-brand"
               />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-workshop-text">
+                  Customer GSTIN (B2B Tax Invoicing)
+                </label>
+                <span className="text-[10px] text-workshop-muted uppercase tracking-wider font-semibold">Optional</span>
+              </div>
+              <input
+                type="text"
+                maxLength={15}
+                value={formData.gstin}
+                onChange={(e) => setFormData({ ...formData, gstin: e.target.value.toUpperCase() })}
+                placeholder="e.g. 37AAAAA0000A1Z5"
+                className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm font-mono uppercase focus:outline-none focus:border-brand"
+              />
+              <p className="text-[10px] text-workshop-muted mt-0.5">15-digit GSTIN enables compliant B2B tax invoices & GSTR-1 reporting.</p>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-workshop-border-soft">

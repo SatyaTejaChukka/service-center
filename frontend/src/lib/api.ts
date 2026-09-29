@@ -59,3 +59,38 @@ export function openPdfDocument(endpoint: string): void {
   const url = getPdfUrl(endpoint);
   window.open(url, '_blank');
 }
+
+/**
+ * Downloads an authenticated binary/CSV report file directly
+ */
+export async function downloadReportFile(endpoint: string, defaultFilename: string): Promise<void> {
+  const token = localStorage.getItem('pr_auth_token');
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+  if (!response.ok) {
+    throw new Error('Failed to download export file');
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition');
+  let filename = defaultFilename;
+  if (disposition && disposition.includes('filename=')) {
+    const matches = disposition.match(/filename="?([^";]+)"?/);
+    if (matches && matches[1]) {
+      filename = matches[1];
+    }
+  }
+
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  window.URL.revokeObjectURL(downloadUrl);
+  document.body.removeChild(link);
+}

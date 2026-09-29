@@ -52,7 +52,18 @@ export const CustomerDetailPage: React.FC<Props> = ({
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h2 className="font-display font-bold text-2xl text-workshop-text">{customer.name}</h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="font-display font-bold text-2xl text-workshop-text">{customer.name}</h2>
+            {customer.gstin ? (
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-mono font-bold rounded-md border border-blue-200">
+                GSTIN: {customer.gstin}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 bg-gray-50 text-gray-600 text-xs font-medium rounded-md border border-gray-200">
+                B2C Consumer
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-4 text-xs text-workshop-muted mt-1 font-mono">
             <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-brand" /> {customer.phone}</span>
             {customer.alt_phone && <span>Alt: {customer.alt_phone}</span>}

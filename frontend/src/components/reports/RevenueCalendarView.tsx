@@ -13,9 +13,14 @@ import {
   Clock,
   Printer,
   Sparkles,
-  Info
+  Info,
+  FileSpreadsheet,
+  Download,
+  Percent,
+  ChevronDown
 } from 'lucide-react';
 import { formatINR } from '../../lib/formatters';
+import { downloadReportFile } from '../../lib/api';
 
 export interface DayInvoice {
   id: number;
@@ -24,14 +29,22 @@ export interface DayInvoice {
   job_card_number?: string;
   customer_name: string;
   customer_phone?: string;
+  customer_gstin?: string;
   vehicle_reg?: string;
   vehicle_model?: string;
   parts_total: number;
   labour_total: number;
   other_charges_total: number;
   discount?: number;
+  taxable_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
   tax_total?: number;
   grand_total: number;
+  total_cost?: number;
+  gross_profit?: number;
+  margin_percent?: number;
   amount_paid: number;
   balance_due: number;
   payment_status: string;
@@ -58,6 +71,13 @@ export interface DailyBreakdownItem {
   other_paise: number;
   discount_paise: number;
   tax_paise: number;
+  taxable_paise?: number;
+  cgst_paise?: number;
+  sgst_paise?: number;
+  igst_paise?: number;
+  cost_paise?: number;
+  profit_paise?: number;
+  margin_percent?: number;
   invoice_count: number;
   collections_paise: number;
   invoices: DayInvoice[];
@@ -86,6 +106,8 @@ export const RevenueCalendarView: React.FC<Props> = ({
   }, [dailyBreakdown]);
 
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
+  const [caExportMenuOpen, setCaExportMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth(); // 0-indexed
@@ -111,6 +133,41 @@ export const RevenueCalendarView: React.FC<Props> = ({
       .sort();
     return matches.length > 0 ? matches[matches.length - 1] : `${year}-${String(month + 1).padStart(2, '0')}-01`;
   });
+
+  // Export handlers
+  const handleExport = async (type: 'audit-pack' | 'sales-xlsx' | 'sales-csv' | 'daybook-xlsx' | 'daybook-csv') => {
+    try {
+      setExporting(type);
+      const monthParam = `${year}-${String(month + 1).padStart(2, '0')}`;
+      if (type === 'audit-pack') {
+        await downloadReportFile(`/reports/export/ca-audit-pack?month=${monthParam}`, `CA_Audit_Pack_${monthParam}.xlsx`);
+      } else if (type === 'sales-xlsx') {
+        await downloadReportFile(`/reports/export/sales-register?format=xlsx&month=${monthParam}`, `Sales_Register_${monthParam}.xlsx`);
+      } else if (type === 'sales-csv') {
+        await downloadReportFile(`/reports/export/sales-register?format=csv&month=${monthParam}`, `Sales_Register_${monthParam}.csv`);
+      } else if (type === 'daybook-xlsx') {
+        await downloadReportFile(`/reports/export/day-book?format=xlsx&month=${monthParam}`, `Day_Book_${monthParam}.xlsx`);
+      } else if (type === 'daybook-csv') {
+        await downloadReportFile(`/reports/export/day-book?format=csv&month=${monthParam}`, `Day_Book_${monthParam}.csv`);
+      }
+    } catch (err) {
+      console.error('Export failed:', err);
+    } finally {
+      setExporting(null);
+      setCaExportMenuOpen(false);
+    }
+  };
+
+  const handleDownloadDaySheet = async (dateStr: string) => {
+    try {
+      setExporting(`day-${dateStr}`);
+      await downloadReportFile(`/reports/export/day-book?format=csv&date=${dateStr}`, `Day_Book_${dateStr}.csv`);
+    } catch (err) {
+      console.error('Day export failed:', err);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   // Days in current month
   const totalDays = new Date(year, month + 1, 0).getDate();
@@ -156,6 +213,12 @@ export const RevenueCalendarView: React.FC<Props> = ({
     let invoicesCount = 0;
     let parts = 0;
     let labour = 0;
+    let cost = 0;
+    let profit = 0;
+    let taxable = 0;
+    let cgst = 0;
+    let sgst = 0;
+    let igst = 0;
 
     activeDatesInMonth.forEach((dateKey) => {
       const item = dailyBreakdown[dateKey];
@@ -165,8 +228,16 @@ export const RevenueCalendarView: React.FC<Props> = ({
         invoicesCount += item.invoice_count || 0;
         parts += item.parts_paise || 0;
         labour += item.labour_paise || 0;
+        cost += item.cost_paise || 0;
+        profit += item.profit_paise || 0;
+        taxable += item.taxable_paise || 0;
+        cgst += item.cgst_paise || 0;
+        sgst += item.sgst_paise || 0;
+        igst += item.igst_paise || 0;
       }
     });
+
+    const marginPercent = taxable > 0 ? (profit / taxable) * 100 : 0;
 
     return {
       invoiced,
@@ -174,6 +245,13 @@ export const RevenueCalendarView: React.FC<Props> = ({
       invoicesCount,
       parts,
       labour,
+      cost,
+      profit,
+      taxable,
+      cgst,
+      sgst,
+      igst,
+      marginPercent,
       activeDays: activeDatesInMonth.length,
     };
   }, [activeDatesInMonth, dailyBreakdown]);
@@ -217,69 +295,187 @@ export const RevenueCalendarView: React.FC<Props> = ({
             </h3>
           </div>
           <p className="text-xs text-workshop-muted mt-1">
-            Click on any day in the monthly calendar to inspect its sales register, cash collections, and invoice ledger.
+            Click on any day in the monthly calendar to inspect its sales register, cash collections, GST liability, and gross margins.
           </p>
         </div>
 
-        {/* Month Navigation Controls */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <button
-            onClick={handlePrevMonth}
-            className="p-2 bg-gray-50 hover:bg-gray-100 border border-workshop-border rounded-lg text-workshop-text transition cursor-pointer"
-            title="Previous Month"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          
-          <div className="font-bold text-sm font-display text-workshop-text px-3 py-1.5 bg-gray-50 border border-workshop-border rounded-lg min-w-[150px] text-center">
-            {monthLabel}
+        {/* Controls: Month Nav + 1-Click Export for CA Dropdown */}
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-workshop-border">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1.5 hover:bg-white rounded-md text-workshop-text transition cursor-pointer"
+              title="Previous Month"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            
+            <div className="font-bold text-xs font-display text-workshop-text px-2 min-w-[130px] text-center">
+              {monthLabel}
+            </div>
+
+            <button
+              onClick={handleNextMonth}
+              className="p-1.5 hover:bg-white rounded-md text-workshop-text transition cursor-pointer"
+              title="Next Month"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={handleJumpToToday}
+              className="px-2 py-1 text-[11px] font-semibold text-brand hover:bg-blue-50 rounded transition cursor-pointer ml-1"
+            >
+              Today
+            </button>
           </div>
 
-          <button
-            onClick={handleNextMonth}
-            className="p-2 bg-gray-50 hover:bg-gray-100 border border-workshop-border rounded-lg text-workshop-text transition cursor-pointer"
-            title="Next Month"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          {/* Export for CA Button with Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setCaExportMenuOpen(!caExportMenuOpen)}
+              disabled={exporting !== null}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition cursor-pointer"
+              title="Export formatted reports for Tally Prime, Zoho Books, Marg ERP, or MS Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>{exporting ? 'Generating...' : 'Export for CA'}</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${caExportMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-          <button
-            onClick={handleJumpToToday}
-            className="px-3 py-1.5 text-xs font-semibold text-brand hover:bg-blue-50 border border-brand/30 rounded-lg transition cursor-pointer ml-1"
-          >
-            Today
-          </button>
+            {caExportMenuOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-workshop-border py-2 z-50 animate-in fade-in slide-in-from-top-1">
+                <div className="px-3 py-1.5 border-b border-workshop-border-soft">
+                  <div className="text-[11px] font-bold text-workshop-muted uppercase tracking-wider">
+                    CA Tax &amp; Audit Exports ({monthLabel})
+                  </div>
+                  <div className="text-[10px] text-workshop-muted">
+                    Compatible with Tally Prime, Zoho, Marg &amp; Excel
+                  </div>
+                </div>
+
+                <div className="py-1">
+                  <button
+                    onClick={() => handleExport('audit-pack')}
+                    className="w-full text-left px-3 py-2 hover:bg-emerald-50/60 flex items-center justify-between text-xs transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-bold text-workshop-text flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        Complete CA Audit Pack
+                      </div>
+                      <div className="text-[10px] text-workshop-muted">Multi-sheet .xlsx (Sales, Collections, GST, Margins)</div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">.XLSX</span>
+                  </button>
+
+                  <div className="h-px bg-workshop-border-soft my-1" />
+
+                  <button
+                    onClick={() => handleExport('sales-xlsx')}
+                    className="w-full text-left px-3 py-2 hover:bg-blue-50/60 flex items-center justify-between text-xs transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-semibold text-workshop-text">Monthly Sales Register (Excel)</div>
+                      <div className="text-[10px] text-workshop-muted">Invoices with GSTIN, HSN/SAC &amp; Tax split</div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">.XLSX</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleExport('sales-csv')}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center justify-between text-xs transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-semibold text-workshop-text">Monthly Sales Register (CSV)</div>
+                      <div className="text-[10px] text-workshop-muted">For Tally / Marg / Zoho Books direct import</div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">.CSV</span>
+                  </button>
+
+                  <div className="h-px bg-workshop-border-soft my-1" />
+
+                  <button
+                    onClick={() => handleExport('daybook-xlsx')}
+                    className="w-full text-left px-3 py-2 hover:bg-blue-50/60 flex items-center justify-between text-xs transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-semibold text-workshop-text">Monthly Day Book (Excel)</div>
+                      <div className="text-[10px] text-workshop-muted">Daily cash inflow &amp; payment receipts ledger</div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">.XLSX</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleExport('daybook-csv')}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center justify-between text-xs transition cursor-pointer"
+                  >
+                    <div>
+                      <div className="font-semibold text-workshop-text">Monthly Day Book (CSV)</div>
+                      <div className="text-[10px] text-workshop-muted">Standard daily receipts journal</div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">.CSV</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Month Highlights Mini-Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 bg-white rounded-xl border border-workshop-border shadow-2xs">
-          <span className="text-[11px] font-bold text-workshop-muted uppercase tracking-wider">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
             Month Invoiced
           </span>
-          <div className="mt-1 font-display font-bold text-xl text-brand-deep">
+          <div className="mt-1 font-display font-bold text-lg text-brand-deep">
             {formatINR(monthTotals.invoiced)}
           </div>
           <div className="text-[10px] text-workshop-muted mt-0.5">
-            {monthTotals.invoicesCount} finalized invoices
+            {monthTotals.invoicesCount} finalized bills
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-xl border border-workshop-border shadow-2xs">
-          <span className="text-[11px] font-bold text-workshop-muted uppercase tracking-wider">
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
             Month Collections
           </span>
-          <div className="mt-1 font-display font-bold text-xl text-workshop-green">
+          <div className="mt-1 font-display font-bold text-lg text-workshop-green">
             {formatINR(monthTotals.collections)}
           </div>
           <div className="text-[10px] text-workshop-muted mt-0.5">
-            Cash &amp; digital receipts
+            Receipts &amp; inflow
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-xl border border-workshop-border shadow-2xs">
-          <span className="text-[11px] font-bold text-workshop-muted uppercase tracking-wider">
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
+            Gross Profit &amp; Margin
+          </span>
+          <div className="mt-1 font-display font-bold text-lg text-emerald-700">
+            {formatINR(monthTotals.profit)}
+          </div>
+          <div className="text-[10px] text-emerald-800 font-medium mt-0.5">
+            {monthTotals.marginPercent.toFixed(1)}% margin &bull; Cost: {formatINR(monthTotals.cost)}
+          </div>
+        </div>
+
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
+            GST Total Liability
+          </span>
+          <div className="mt-1 font-display font-bold text-lg text-purple-700">
+            {formatINR(monthTotals.cgst + monthTotals.sgst + monthTotals.igst)}
+          </div>
+          <div className="text-[10px] text-purple-900 font-mono mt-0.5">
+            Taxable: {formatINR(monthTotals.taxable)}
+          </div>
+        </div>
+
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
             Parts vs Labour
           </span>
           <div className="mt-1 text-xs font-mono font-bold text-workshop-text">
@@ -290,15 +486,15 @@ export const RevenueCalendarView: React.FC<Props> = ({
           </div>
         </div>
 
-        <div className="p-3.5 bg-white rounded-xl border border-workshop-border shadow-2xs">
-          <span className="text-[11px] font-bold text-workshop-muted uppercase tracking-wider">
-            Active Billing Days
+        <div className="p-3 bg-white rounded-xl border border-workshop-border shadow-2xs">
+          <span className="text-[10px] font-bold text-workshop-muted uppercase tracking-wider">
+            Billing Days
           </span>
-          <div className="mt-1 font-display font-bold text-xl text-workshop-text">
-            {monthTotals.activeDays} <span className="text-xs font-sans text-workshop-muted font-normal">days with activity</span>
+          <div className="mt-1 font-display font-bold text-lg text-workshop-text">
+            {monthTotals.activeDays} <span className="text-xs font-sans text-workshop-muted font-normal">active</span>
           </div>
           <div className="text-[10px] text-workshop-muted mt-0.5">
-            Out of {totalDays} calendar days
+            Out of {totalDays} days
           </div>
         </div>
       </div>
@@ -453,8 +649,21 @@ export const RevenueCalendarView: React.FC<Props> = ({
               </h4>
             </div>
 
-            <div className="font-mono text-xs font-semibold text-workshop-muted bg-white px-2.5 py-1 rounded border border-workshop-border">
-              {selectedDateStr}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDownloadDaySheet(selectedDateStr)}
+                disabled={exporting !== null}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-50 text-workshop-text border border-workshop-border rounded text-xs font-semibold shadow-2xs transition cursor-pointer"
+                title="Download Day Sheet CSV for CA"
+              >
+                <Download className="w-3.5 h-3.5 text-workshop-muted" />
+                <span>Day Sheet</span>
+              </button>
+
+              <div className="font-mono text-xs font-semibold text-workshop-muted bg-white px-2 py-1 rounded border border-workshop-border">
+                {selectedDateStr}
+              </div>
             </div>
           </div>
 
@@ -488,6 +697,36 @@ export const RevenueCalendarView: React.FC<Props> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Day Profitability & GST Metrics */}
+              {selectedDayData.invoiced_revenue_paise > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-emerald-50/40 rounded-xl border border-emerald-100">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
+                      <span>Day Gross Profit</span>
+                      <span className="font-mono font-bold">{(selectedDayData.margin_percent || 0).toFixed(1)}%</span>
+                    </span>
+                    <div className="mt-1 font-mono font-bold text-base text-emerald-700">
+                      {formatINR(selectedDayData.profit_paise || 0)}
+                    </div>
+                    <div className="text-[10px] text-emerald-800/80 mt-0.5">
+                      Cost: {formatINR(selectedDayData.cost_paise || 0)}
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-purple-50/40 rounded-xl border border-purple-100">
+                    <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider">
+                      GST Liability
+                    </span>
+                    <div className="mt-1 font-mono font-bold text-base text-purple-700">
+                      {formatINR((selectedDayData.cgst_paise || 0) + (selectedDayData.sgst_paise || 0) + (selectedDayData.igst_paise || 0))}
+                    </div>
+                    <div className="text-[10px] text-purple-800/80 mt-0.5 font-mono">
+                      Taxable: {formatINR(selectedDayData.taxable_paise || 0)}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Day Parts vs Labour breakdown */}
               {selectedDayData.invoiced_revenue_paise > 0 && (
@@ -561,6 +800,13 @@ export const RevenueCalendarView: React.FC<Props> = ({
                             <div className="text-[11px] text-workshop-muted font-mono">
                               {inv.vehicle_reg} &bull; {inv.vehicle_model}
                             </div>
+                            {inv.customer_gstin && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-800 font-mono text-[10px] font-bold">
+                                  GSTIN: {inv.customer_gstin}
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           <div className="text-right">
@@ -578,6 +824,11 @@ export const RevenueCalendarView: React.FC<Props> = ({
                             >
                               {inv.payment_status}
                             </span>
+                            {inv.gross_profit !== undefined && inv.gross_profit !== null && (
+                              <div className="text-[10px] text-emerald-700 font-mono font-semibold mt-1">
+                                Profit: {formatINR(inv.gross_profit)} ({inv.margin_percent?.toFixed(1) || 0}%)
+                              </div>
+                            )}
                           </div>
                         </div>
 
