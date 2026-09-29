@@ -759,6 +759,7 @@ def record_customer_approvals(
 @router.get("/{job_card_id}/pdf")
 def get_job_card_pdf_endpoint(
     job_card_id: int,
+    template: str = Query("detailed", description="Template to render: 'detailed' (work order & estimate) or 'technician' (bay sheet)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -769,9 +770,11 @@ def get_job_card_pdf_endpoint(
     setting = db.query(Setting).filter(Setting.key == "business_profile").first()
     profile = json.loads(setting.value_json) if setting else {}
 
-    pdf_bytes = generate_job_card_pdf(jc, profile)
+    pdf_bytes = generate_job_card_pdf(jc, profile, template=template)
+    suffix = "BaySheet" if template.lower() in ("technician", "bay", "baysheet", "tech") else "WorkOrder"
+    filename = f"{jc.job_card_number}_{suffix}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={jc.job_card_number}.pdf"}
+        headers={"Content-Disposition": f"inline; filename={filename}"}
     )
