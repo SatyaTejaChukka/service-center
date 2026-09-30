@@ -14,10 +14,10 @@ interface CustomerItem {
 
 interface Props {
   onNavigate: (page: string, id?: number) => void;
-  onOpenNewCustomerModal: () => void;
+  onNewJobCard?: () => void;
 }
 
-export const CustomersPage: React.FC<Props> = ({ onNavigate, onOpenNewCustomerModal }) => {
+export const CustomersPage: React.FC<Props> = ({ onNavigate, onNewJobCard }) => {
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -52,12 +52,14 @@ export const CustomersPage: React.FC<Props> = ({ onNavigate, onOpenNewCustomerMo
             Manage customer accounts, contact details, and vehicle ownership.
           </p>
         </div>
-        <button
-          onClick={onOpenNewCustomerModal}
-          className="flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-deep text-white font-semibold text-sm rounded-lg shadow-sm transition cursor-pointer self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4" /> + Add New Customer
-        </button>
+        {onNewJobCard && (
+          <button
+            onClick={onNewJobCard}
+            className="flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-deep text-white font-semibold text-sm rounded-lg shadow-sm transition cursor-pointer self-start sm:self-auto"
+          >
+            <PlusCircle className="w-4 h-4" /> + New Job Card
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -82,7 +84,7 @@ export const CustomersPage: React.FC<Props> = ({ onNavigate, onOpenNewCustomerMo
           </div>
         ) : customers.length === 0 ? (
           <div className="col-span-full py-12 text-center text-sm text-workshop-muted">
-            No customers found. Click <span className="font-semibold text-brand">+ Add New Customer</span> to create one.
+            No customers found. Customers and vehicles are registered automatically when creating a new Job Card.
           </div>
         ) : (
           customers.map((c) => (

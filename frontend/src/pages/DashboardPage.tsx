@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   PlusCircle,
-  UserPlus,
   Search,
   Clock,
   CheckCircle,
@@ -42,14 +41,12 @@ interface Props {
   onNavigate: (page: string, id?: number) => void;
   onOpenSearch: () => void;
   onNewJobCard: () => void;
-  onNewCustomer: () => void;
 }
 
 export const DashboardPage: React.FC<Props> = ({
   onNavigate,
   onOpenSearch,
   onNewJobCard,
-  onNewCustomer,
 }) => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,12 +110,6 @@ export const DashboardPage: React.FC<Props> = ({
             className="flex items-center gap-2 px-4 py-2.5 bg-brand hover:bg-brand-deep text-white font-semibold text-sm rounded-lg shadow-sm transition cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" /> + New Job Card
-          </button>
-          <button
-            onClick={onNewCustomer}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-white hover:bg-gray-50 border border-workshop-border text-workshop-text font-semibold text-sm rounded-lg transition cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 text-workshop-muted" /> + New Customer
           </button>
           <button
             onClick={onOpenSearch}

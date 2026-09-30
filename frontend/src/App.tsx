@@ -4,7 +4,6 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { GlobalSearchModal } from './components/search/GlobalSearchModal';
 import { NewJobCardModal } from './components/jobcard/NewJobCardModal';
-import { NewCustomerModal } from './components/customer/NewCustomerModal';
 
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -41,7 +40,6 @@ export const App: React.FC = () => {
   // Global Modals State
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [newJobCardModalOpen, setNewJobCardModalOpen] = useState(false);
-  const [newCustomerModalOpen, setNewCustomerModalOpen] = useState(false);
 
   // Global Keyboard Shortcut: Ctrl+K or / opens Omnibox Search (FR-SRC-001)
   useEffect(() => {
@@ -189,7 +187,6 @@ export const App: React.FC = () => {
               onNavigate={(page, id) => navigateTo(page, id)}
               onOpenSearch={() => setSearchModalOpen(true)}
               onNewJobCard={() => setNewJobCardModalOpen(true)}
-              onNewCustomer={() => setNewCustomerModalOpen(true)}
             />
           )}
 
@@ -214,7 +211,7 @@ export const App: React.FC = () => {
           {activePage === 'customers' && (
             <CustomersPage
               onNavigate={(page, id) => navigateTo(page, id)}
-              onOpenNewCustomerModal={() => setNewCustomerModalOpen(true)}
+              onNewJobCard={() => setNewJobCardModalOpen(true)}
             />
           )}
 
@@ -282,15 +279,6 @@ export const App: React.FC = () => {
         onJobCardCreated={(jcId) => {
           setSelectedJobCardId(jcId);
           setActivePage('jobcard_detail');
-        }}
-      />
-
-      <NewCustomerModal
-        isOpen={newCustomerModalOpen}
-        onClose={() => setNewCustomerModalOpen(false)}
-        onCustomerCreated={(cId) => {
-          setSelectedCustomerId(cId);
-          setActivePage('customer_detail');
         }}
       />
 
