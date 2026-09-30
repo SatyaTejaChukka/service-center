@@ -1,7 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { findFreePort } = require('./portFinder');
 
@@ -10,6 +11,7 @@ let splashWindow = null;
 let backendProcess = null;
 let backendPort = 8000;
 let isQuitting = false;
+const shutdownToken = crypto.randomUUID();
 
 // 1. Single Instance Lock (Preempts multiple competing SQLite writers)
 const gotTheLock = app.requestSingleInstanceLock();
@@ -121,12 +123,12 @@ async function bootApplication() {
 
   if (isDev) {
     backendBinary = path.join(__dirname, '../../.venv/Scripts/python.exe');
-    backendArgs = ['server_entrypoint.py', '--port', backendPort.toString()];
+    backendArgs = ['server_entrypoint.py', '--port', backendPort.toString(), '--shutdown-token', shutdownToken];
     backendCwd = path.join(__dirname, '../../backend');
   } else {
     // In packaged application, sidecar is placed in process.resourcesPath/backend-server/backend-server.exe
     backendBinary = path.join(process.resourcesPath, 'backend-server', 'backend-server.exe');
-    backendArgs = ['--port', backendPort.toString()];
+    backendArgs = ['--port', backendPort.toString(), '--shutdown-token', shutdownToken];
     backendCwd = path.join(process.resourcesPath, 'backend-server');
   }
 
@@ -239,8 +241,31 @@ async function bootApplication() {
     logMessage(`[Renderer Console] ${message} (line ${line} in ${sourceId})`);
   });
 
+  // Guard against arbitrary external navigation (blocks navigation hijacking)
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      const isLocal = parsed.protocol === 'file:' || parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+      if (!isLocal) {
+        event.preventDefault();
+        shell.openExternal(navigationUrl);
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
   // Intercept and configure child windows (e.g. PDF viewers)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      const isLocal = parsed.protocol === 'file:' || parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost';
+      if (!isLocal) {
+        shell.openExternal(url);
+        return { action: 'deny' };
+      }
+    } catch {}
+
     logMessage(`[Desktop] Opening document viewer window for URL: ${url}`);
     return {
       action: 'allow',
@@ -366,7 +391,10 @@ async function handleGracefulShutdown() {
             port: backendPort,
             path: '/api/v1/system/shutdown',
             method: 'POST',
-            timeout: 1000,
+            headers: {
+              'X-System-Shutdown-Token': shutdownToken,
+            },
+            timeout: 1200,
           },
           () => resolve(true)
         );

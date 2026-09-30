@@ -51,12 +51,28 @@ def seed_initial_catalogs():
     finally:
         db.close()
 
+from typing import Optional
+import threading
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Pushpa Raj Automotive Services database...")
     init_db()
     seed_initial_catalogs()
     logger.info("Database initialized with WAL mode and catalogs verified.")
+
+    # Trigger non-blocking automated daily backup snapshot in background
+    def _run_bg_backup():
+        try:
+            from app.services.backup_service import run_automated_daily_backup
+            res = run_automated_daily_backup(retention_count=7)
+            if res:
+                logger.info(f"Automated daily safety backup completed: {res.get('folder_name')}")
+        except Exception as e:
+            logger.error(f"Automated background backup notice: {e}")
+
+    threading.Thread(target=_run_bg_backup, daemon=True).start()
+
     yield
     # Graceful shutdown handler: Flush SQLite WAL checkpoint before process termination
     try:
@@ -95,12 +111,42 @@ def home():
 def healthcheck():
     return {"status": "ok", "app": "Service Center Management System", "offline_ready": True}
 
+from fastapi import Header, HTTPException, status, Depends
+from app.core.database import get_db, engine
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
 @app.post(f"{settings.API_V1_STR}/system/shutdown")
-def shutdown_system():
-    """Allows desktop host process to signal clean server termination."""
-    import os, threading, time
+def shutdown_system(
+    x_system_shutdown_token: Optional[str] = Header(None, alias="X-System-Shutdown-Token"),
+    db: Session = Depends(get_db)
+):
+    """Allows desktop host process to signal clean server termination with authentication and WAL flush."""
+    # Verify authorization if SHUTDOWN_TOKEN is configured
+    if settings.SHUTDOWN_TOKEN:
+        if not x_system_shutdown_token or x_system_shutdown_token != settings.SHUTDOWN_TOKEN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Unauthorized: Invalid system shutdown token"
+            )
+
+    # Cleanly flush WAL checkpoint right now
+    try:
+        logger.info("Flushing SQLite WAL checkpoint prior to host shutdown...")
+        db.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error flushing WAL on shutdown: {e}")
+
+    import os, time
     def _delayed_exit():
         time.sleep(0.3)
+        try:
+            engine.dispose()
+        except Exception:
+            pass
         os._exit(0)
+
     threading.Thread(target=_delayed_exit, daemon=True).start()
-    return {"message": "Server shutting down cleanly"}
+    return {"message": "Server shutting down cleanly and WAL checkpoint committed"}
+

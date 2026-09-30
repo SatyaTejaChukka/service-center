@@ -12,10 +12,13 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000, help="Port to bind backend server")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host address to bind")
     parser.add_argument("--data-dir", type=str, default="", help="Custom data directory for SQLite & documents")
+    parser.add_argument("--shutdown-token", type=str, default="", help="Authorization token for host shutdown")
     args = parser.parse_args()
 
     if args.data_dir:
         os.environ["PR_DATA_DIR"] = args.data_dir
+    if args.shutdown_token:
+        os.environ["PR_SHUTDOWN_TOKEN"] = args.shutdown_token
 
     # Import app after setting environment variables
     from app.main import app

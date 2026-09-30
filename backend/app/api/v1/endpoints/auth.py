@@ -119,23 +119,20 @@ def register(req: UserRegisterRequest, db: Session = Depends(get_db)):
                 detail="Official Workshop Phone is required for Administrator registration."
             )
 
-        # If an active admin already exists in the system, require master security key or existing admin password
+        # If an active admin already exists in the system, require an active admin's password to authorize creating another Administrator
         admin_count = db.query(User).filter(User.role == "ADMIN", User.is_active == True).count()
         if admin_count > 0:
-            MASTER_KEY = "PUSHPARAJ-ADMIN"
             provided_key = (req.admin_secret_key or "").strip()
-            verified = (provided_key == MASTER_KEY)
-            if not verified:
-                # Also check if it matches password of any active admin
-                admins = db.query(User).filter(User.role == "ADMIN", User.is_active == True).all()
-                for a in admins:
-                    if verify_password(provided_key, a.password_hash):
-                        verified = True
-                        break
+            verified = False
+            admins = db.query(User).filter(User.role == "ADMIN", User.is_active == True).all()
+            for a in admins:
+                if verify_password(provided_key, a.password_hash):
+                    verified = True
+                    break
             if not verified:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Invalid Admin Authorization Key. Please provide the workshop Master Key (PUSHPARAJ-ADMIN) or an active Admin's password to create an Administrator account."
+                    detail="Invalid Admin Authorization. An active Administrator's password is required to create a new Administrator account."
                 )
 
         # Update business profile in settings with the provided business details
