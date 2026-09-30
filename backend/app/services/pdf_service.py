@@ -91,6 +91,13 @@ def generate_invoice_pdf(
     buffer = BytesIO()
     
     is_void = (invoice.status == "VOID")
+
+    jc = invoice.job_card
+    veh = jc.vehicle if jc else None
+    veh_reg = (veh.registration_number if veh else "").strip()
+    inv_num = invoice.invoice_number or ("VOID" if is_void else "Draft")
+    doc_title = f"{veh_reg} - Invoice #{inv_num}" if veh_reg else f"Invoice #{inv_num}"
+    author_name = business_profile.get("name", "Pushpa Raj Automotive Services")
     
     doc = SimpleDocTemplate(
         buffer,
@@ -98,7 +105,9 @@ def generate_invoice_pdf(
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=15 * mm,
-        bottomMargin=15 * mm
+        bottomMargin=15 * mm,
+        title=doc_title,
+        author=author_name
     )
 
     styles = getSampleStyleSheet()
@@ -433,13 +442,21 @@ def generate_job_card_detailed_pdf(
 ) -> bytes:
     """Generates a comprehensive Dealership Work Order & Estimate PDF."""
     buffer = BytesIO()
+    veh = job_card.vehicle
+    veh_reg = (veh.registration_number if veh else "").strip()
+    jc_no = job_card.job_card_number or str(job_card.id)
+    doc_title = f"{veh_reg} - Job Card #{jc_no}" if veh_reg else f"Job Card #{jc_no}"
+    author_name = business_profile.get("name", "Pushpa Raj Automotive Services")
+
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=12 * mm,
         rightMargin=12 * mm,
         topMargin=12 * mm,
-        bottomMargin=12 * mm
+        bottomMargin=12 * mm,
+        title=doc_title,
+        author=author_name
     )
 
     styles = getSampleStyleSheet()
@@ -745,13 +762,21 @@ def generate_job_card_technician_pdf(
 ) -> bytes:
     """Generates a shopfloor clipboard sheet optimized for bay technicians."""
     buffer = BytesIO()
+    veh = job_card.vehicle
+    veh_reg = (veh.registration_number if veh else "").strip()
+    jc_no = job_card.job_card_number or str(job_card.id)
+    doc_title = f"{veh_reg} - Bay Sheet #{jc_no}" if veh_reg else f"Bay Sheet #{jc_no}"
+    author_name = business_profile.get("name", "Pushpa Raj Automotive Services")
+
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=12 * mm,
         rightMargin=12 * mm,
         topMargin=12 * mm,
-        bottomMargin=12 * mm
+        bottomMargin=12 * mm,
+        title=doc_title,
+        author=author_name
     )
 
     styles = getSampleStyleSheet()

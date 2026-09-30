@@ -124,9 +124,14 @@ def restore_backup(backup_folder_path: str) -> Dict[str, Any]:
     with open(manifest_path, "r", encoding="utf-8") as f:
         manifest = json.load(f)
 
-    # Verify backup checksums before restoring
+    # Verify backup checksums and enforce path traversal security before restoring
     for rel_path, meta in manifest.get("checksums", {}).items():
-        fp = b_path / rel_path
+        if ".." in rel_path or os.path.isabs(rel_path) or rel_path.startswith("/") or rel_path.startswith("\\"):
+            raise ValueError(f"Security error: Dangerous path sequence detected in backup manifest: {rel_path}")
+        fp = (b_path / rel_path).resolve()
+        # Verify that fp is strictly inside b_path
+        if not str(fp).startswith(str(b_path.resolve())):
+            raise ValueError(f"Security error: Path escapes backup root directory: {rel_path}")
         if not fp.exists():
             raise FileNotFoundError(f"Corrupted backup: missing file {rel_path}")
         cur_hash = calculate_sha256(fp)
@@ -187,3 +192,63 @@ def restore_backup(backup_folder_path: str) -> Dict[str, Any]:
         "safety_backup": str(safety_dir),
         "timestamp": now.isoformat()
     }
+
+
+def run_automated_daily_backup(retention_count: int = 7) -> Optional[Dict[str, Any]]:
+    """
+    Checks if a backup was created in the last 24 hours.
+    If none exists, creates a fresh backup and prunes auto-backups older than retention_count.
+    """
+    try:
+        backups_dir = settings.backups_dir
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        auto_dir = backups_dir / "auto_backups"
+        auto_dir.mkdir(parents=True, exist_ok=True)
+
+        # Check latest backup in both root backups and auto_backups
+        existing_backups = []
+        for folder in [backups_dir, auto_dir]:
+            for item in folder.iterdir():
+                if item.is_dir() and item.name.startswith("backup_"):
+                    manifest = item / "manifest.json"
+                    if manifest.exists():
+                        try:
+                            with open(manifest, "r", encoding="utf-8") as f:
+                                m = json.load(f)
+                                dt_str = m.get("created_at")
+                                if dt_str:
+                                    existing_backups.append((datetime.fromisoformat(dt_str), item))
+                        except Exception:
+                            pass
+
+        existing_backups.sort(key=lambda x: x[0], reverse=True)
+        now = datetime.utcnow()
+        if existing_backups:
+            latest_dt = existing_backups[0][0]
+            if (now - latest_dt).total_seconds() < 86400:
+                # A backup was already taken within the last 24 hours
+                return None
+
+        # Execute automated backup
+        result = create_online_backup(destination_folder=str(auto_dir))
+
+        # Prune older automated backups beyond retention_count
+        auto_snapshots = []
+        for item in auto_dir.iterdir():
+            if item.is_dir() and item.name.startswith("backup_"):
+                auto_snapshots.append(item)
+        auto_snapshots.sort(key=lambda x: x.stat().st_ctime, reverse=True)
+
+        if len(auto_snapshots) > retention_count:
+            for old_item in auto_snapshots[retention_count:]:
+                try:
+                    shutil.rmtree(old_item)
+                except Exception:
+                    pass
+
+        return result
+    except Exception as e:
+        import logging
+        logging.getLogger("pushparaj.backend").error(f"Automated daily backup encountered an error: {e}")
+        return None
+

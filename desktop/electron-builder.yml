@@ -1,0 +1,37 @@
+appId: com.pushparaj.workshop
+productName: Pushpa Raj Automotive Services
+copyright: Copyright © 2026 Pushpa Raj Automotive Services
+
+directories:
+  output: ../release
+  buildResources: assets
+
+files:
+  - "src/**/*"
+  - "dist/**/*"
+  - "assets/**/*"
+  - "package.json"
+
+extraResources:
+  - from: "../backend/dist/backend-server"
+    to: "backend-server"
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: "assets/icon.ico"
+  artifactName: "PushpaRaj-Workshop-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: "Pushpa Raj Workshop"
+  uninstallDisplayName: "Pushpa Raj Automotive Services System"
+  deleteAppDataOnUninstall: false

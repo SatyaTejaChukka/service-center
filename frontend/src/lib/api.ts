@@ -1,4 +1,26 @@
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
+let cachedApiBase: string | null = null;
+
+export function getApiBaseUrl(): string {
+  if (cachedApiBase) return cachedApiBase;
+  if (typeof window !== 'undefined') {
+    if (window.electronAPI?.getBackendPort) {
+      try {
+        const port = window.electronAPI.getBackendPort();
+        if (port) {
+          cachedApiBase = `http://127.0.0.1:${port}/api/v1`;
+          return cachedApiBase;
+        }
+      } catch {}
+    }
+    if (window.__WORKSHOP_API_PORT__) {
+      cachedApiBase = `http://127.0.0.1:${window.__WORKSHOP_API_PORT__}/api/v1`;
+      return cachedApiBase;
+    }
+  }
+  return (import.meta as any).env?.VITE_API_URL || 'http://127.0.0.1:8000/api/v1';
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export async function apiRequest<T = any>(
   endpoint: string,
@@ -14,7 +36,7 @@ export async function apiRequest<T = any>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     ...options,
     headers,
   });
@@ -27,7 +49,9 @@ export async function apiRequest<T = any>(
     } catch {
       errorDetail = await response.text();
     }
-    throw new Error(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+    const err: any = new Error(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+    err.status = response.status;
+    throw err;
   }
 
   // If response is PDF binary or empty
@@ -49,7 +73,7 @@ export async function apiRequest<T = any>(
 export function getPdfUrl(endpoint: string): string {
   const token = localStorage.getItem('pr_auth_token');
   const sep = endpoint.includes('?') ? '&' : '?';
-  return `${API_BASE_URL}${endpoint}${token ? `${sep}token=${encodeURIComponent(token)}` : ''}`;
+  return `${getApiBaseUrl()}${endpoint}${token ? `${sep}token=${encodeURIComponent(token)}` : ''}`;
 }
 
 /**
@@ -70,7 +94,7 @@ export async function downloadReportFile(endpoint: string, defaultFilename: stri
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, { headers });
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, { headers });
   if (!response.ok) {
     throw new Error('Failed to download export file');
   }

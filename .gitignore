@@ -43,3 +43,11 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Desktop Application & PyInstaller Packaging
+release/
+desktop/node_modules/
+backend/build/
+backend/dist/
+*.blockmap
+desktop/dist/
