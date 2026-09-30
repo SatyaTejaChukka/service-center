@@ -125,6 +125,18 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .version-tag {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      color: #fbbf24;
+      font-size: 10.5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.6px;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
+    }
 
     /* Telemetry Gauge Display */
     .telemetry-badge {
@@ -478,7 +490,10 @@
           </svg>
         </div>
         <div class="brand-titles">
-          <h1>Pushpa Raj Automotive</h1>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h1>Pushpa Raj Automotive</h1>
+            <span class="version-tag">v1.0.0</span>
+          </div>
           <p>
             Service Center Management 
             <span class="brand-badge">Desktop Bay Suite</span>
@@ -488,7 +503,6 @@
 
       <div class="telemetry-badge">
         <div class="telemetry-percent"><span id="speed-val">0</span>%</div>
-        <div class="telemetry-unit">Bay Initialization</div>
       </div>
     </div>
 
