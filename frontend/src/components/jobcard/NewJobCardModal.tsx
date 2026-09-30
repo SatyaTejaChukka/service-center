@@ -48,6 +48,7 @@ const STANDARD_CATEGORIES = [
 export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCreated }) => {
   const { user, workshop } = useAuth();
   const [step, setStep] = useState(1);
+  const [isFullEstimateFlow, setIsFullEstimateFlow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,19 +133,81 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   const DRAFT_KEY = 'pr_draft_new_job_card';
   const isFormDirty = isDirty || step > 1;
 
-  // Check if draft exists on open
+  const resetForm = () => {
+    setStep(1);
+    setIsFullEstimateFlow(false);
+    setLoading(false);
+    setError(null);
+    setSearchReg('');
+    setFoundVehicle(null);
+    setLastServiceInfo(null);
+    setCustomerData({
+      name: '',
+      phone: '',
+      alt_phone: '',
+      email: '',
+      address: '',
+    });
+    setVehicleData({
+      registration_number: '',
+      make: '',
+      model: '',
+      variant: '',
+      fuel_type: 'Petrol',
+      odometer: 0,
+      fuel_level: '1/2',
+      vin: '',
+      engine_number: '',
+      year: '',
+      colour: '',
+    });
+    setJobCardNotes('');
+    setPromisedAt('');
+    setAssignedTo('');
+    setComplaints([]);
+    setNewComplaintInput('');
+    setInspections({
+      Engine: { status: 'NORMAL', notes: '' },
+      Brakes: { status: 'NORMAL', notes: '' },
+      Battery: { status: 'NORMAL', notes: '' },
+      Tyres: { status: 'NORMAL', notes: '' },
+      Suspension: { status: 'NORMAL', notes: '' },
+      Lights: { status: 'NORMAL', notes: '' },
+      Fluids: { status: 'NORMAL', notes: '' },
+      AC: { status: 'NORMAL', notes: '' },
+      Others: { status: 'NORMAL', notes: '' },
+    });
+    setLabourLines([]);
+    setPartLines([]);
+    setApprovals({});
+    setApproverName('');
+    setApprovalMethod('PHONE');
+    setCreatedJobCard(null);
+    setShowWhatsAppModal(false);
+    setWhatsAppMessage('');
+    setShowDiscardModal(false);
+    setSavedDraftAvailable(null);
+    setIsDirty(false);
+    localStorage.removeItem(DRAFT_KEY);
+  };
+
+  // Check if draft exists on open or reset if completed
   useEffect(() => {
     if (isOpen) {
-      try {
-        const raw = localStorage.getItem(DRAFT_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.timestamp && step === 1 && !isDirty) {
-            setSavedDraftAvailable(parsed);
+      if (step === 6 || createdJobCard) {
+        resetForm();
+      } else {
+        try {
+          const raw = localStorage.getItem(DRAFT_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.timestamp && step === 1 && !isDirty) {
+              setSavedDraftAvailable(parsed);
+            }
           }
+        } catch (e) {
+          console.warn('Failed to parse draft job card', e);
         }
-      } catch (e) {
-        console.warn('Failed to parse draft job card', e);
       }
     }
   }, [isOpen]);
@@ -209,6 +272,11 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   }, [isOpen, isFormDirty, step, showDiscardModal]);
 
   const handleRequestClose = () => {
+    if (step === 6 || createdJobCard) {
+      resetForm();
+      onClose();
+      return;
+    }
     if (isFormDirty && step < 6) {
       setShowDiscardModal(true);
     } else {
@@ -218,9 +286,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
 
   const handleConfirmDiscard = () => {
     setShowDiscardModal(false);
-    localStorage.removeItem(DRAFT_KEY);
-    setIsDirty(false);
-    setSavedDraftAvailable(null);
+    resetForm();
     onClose();
   };
 
@@ -684,30 +750,33 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
 
         {/* Stepper Bar */}
         <div className="px-6 py-3 bg-white border-b border-workshop-border flex items-center justify-between text-xs overflow-x-auto shrink-0 gap-2">
-          {[
-            '1. Customer & Vehicle',
-            '2. Customer Complaints',
-            '3. Bay Inspection',
-            '4. Work & Parts',
-            '5. Approval',
-            '6. Ready / Opened'
-          ].map((title, idx) => {
-            const stepNum = idx + 1;
-            const isCurrent = step === stepNum;
-            const isDone = step > stepNum;
+          {(isFullEstimateFlow ? [
+            { stepNum: 1, title: '1. Customer & Vehicle' },
+            { stepNum: 2, title: '2. Customer Complaints' },
+            { stepNum: 3, title: '3. Bay Inspection' },
+            { stepNum: 4, title: '4. Work & Parts' },
+            { stepNum: 5, title: '5. Approval' },
+            { stepNum: 6, title: '6. Sent to Bay / Opened' },
+          ] : [
+            { stepNum: 1, title: '1. Customer & Vehicle' },
+            { stepNum: 2, title: '2. Customer Complaints' },
+            { stepNum: 6, title: '3. Sent to Bay / Opened' },
+          ]).map((item) => {
+            const isCurrent = step === item.stepNum;
+            const isDone = item.stepNum === 6 ? false : step > item.stepNum;
             return (
               <div
-                key={title}
-                className={`flex items-center gap-1.5 whitespace-nowrap px-3 py-1 rounded-full ${
+                key={item.title}
+                className={`flex items-center gap-1.5 whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs transition ${
                   isCurrent
-                    ? 'bg-brand text-white font-bold'
+                    ? 'bg-brand text-white font-bold shadow-xs'
                     : isDone
                     ? 'bg-workshop-green-bg text-workshop-green font-semibold'
-                    : 'text-workshop-muted'
+                    : 'text-workshop-muted bg-gray-50 border border-gray-200'
                 }`}
               >
                 {isDone && <Check className="w-3.5 h-3.5" />}
-                <span>{title}</span>
+                <span>{item.title}</span>
               </div>
             );
           })}
@@ -1632,7 +1701,7 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 <FileCheck className="w-8 h-8" />
               </div>
               <h4 className="font-display font-bold text-2xl text-workshop-text">
-                Job Card Opened Successfully!
+                Job Card Opened &amp; Sent to Bay!
               </h4>
               <div className="font-mono font-bold text-xl text-brand-deep bg-blue-50 py-2 px-4 rounded-xl border border-blue-200 inline-block">
                 {createdJobCard.job_card_number}
@@ -1643,7 +1712,9 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
 
               <div className="flex flex-wrap justify-center gap-3 pt-4">
                 <button
+                  type="button"
                   onClick={() => {
+                    resetForm();
                     onClose();
                   }}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-bold rounded-lg transition cursor-pointer shadow-md"
@@ -1701,7 +1772,10 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setStep(3)}
+                  onClick={() => {
+                    setIsFullEstimateFlow(true);
+                    setStep(3);
+                  }}
                   className="px-3.5 py-2 text-xs font-semibold text-workshop-muted hover:text-workshop-text hover:bg-gray-100 rounded-lg transition cursor-pointer"
                   title="Optionally add upfront inspection & parts estimate now"
                 >
