@@ -40,9 +40,34 @@ def build_invoice_export_dicts(invoices: List[Invoice]) -> List[Dict[str, Any]]:
         cost = inv.total_cost or 0
         parts_cost = 0
         labour_cost = 0
-        if inv.job_card:
+
+        cust_name = inv.job_card.customer.name if (inv.job_card and inv.job_card.customer) else "Unknown"
+        cust_phone = inv.job_card.customer.phone if (inv.job_card and inv.job_card.customer) else ""
+        cust_gstin = inv.job_card.customer.gstin if (inv.job_card and inv.job_card.customer) else ""
+        veh_reg = inv.job_card.vehicle.registration_number if (inv.job_card and inv.job_card.vehicle) else ""
+        veh_model = f"{inv.job_card.vehicle.make} {inv.job_card.vehicle.model}" if (inv.job_card and inv.job_card.vehicle) else ""
+        jc_num = inv.job_card.job_card_number if inv.job_card else ""
+
+        if inv.status in ("FINALIZED", "VOID") and inv.line_items_snapshot:
+            try:
+                parsed = json.loads(inv.line_items_snapshot)
+                items = parsed.get("items", []) if isinstance(parsed, dict) else parsed
+                parts_cost = sum(int((item.get("cost_price", 0)) * (item.get("quantity", 1))) for item in items if item.get("type") == "PART")
+                labour_cost = sum(int((item.get("cost_price", 0)) * (item.get("quantity", 1))) for item in items if item.get("type") == "LABOUR")
+                meta = parsed.get("metadata", {}) if isinstance(parsed, dict) else {}
+                if meta.get("customer_name"): cust_name = meta["customer_name"]
+                if meta.get("customer_phone"): cust_phone = meta["customer_phone"]
+                if meta.get("customer_gstin"): cust_gstin = meta["customer_gstin"]
+                if meta.get("vehicle_reg"): veh_reg = meta["vehicle_reg"]
+                if meta.get("vehicle_make") or meta.get("vehicle_model"):
+                    veh_model = f"{meta.get('vehicle_make', '')} {meta.get('vehicle_model', '')}".strip()
+                if meta.get("job_card_number"): jc_num = meta["job_card_number"]
+            except Exception:
+                pass
+        elif inv.job_card:
             parts_cost = sum(int((p.cost_price or 0) * (p.quantity or 1)) for p in inv.job_card.parts_items if p.status in ["APPROVED", "USED"])
             labour_cost = sum(int((l.cost_price or 0) * (l.quantity or 1)) for l in inv.job_card.labour_items if l.status in ["APPROVED", "DONE"])
+
         if cost == 0 and (parts_cost + labour_cost) > 0:
             cost = parts_cost + labour_cost
 
@@ -53,12 +78,12 @@ def build_invoice_export_dicts(invoices: List[Invoice]) -> List[Dict[str, Any]]:
             "id": inv.id,
             "invoice_number": inv.invoice_number,
             "job_card_id": inv.job_card_id,
-            "job_card_number": inv.job_card.job_card_number if inv.job_card else "",
-            "customer_name": inv.job_card.customer.name if (inv.job_card and inv.job_card.customer) else "Unknown",
-            "customer_phone": inv.job_card.customer.phone if (inv.job_card and inv.job_card.customer) else "",
-            "customer_gstin": inv.job_card.customer.gstin if (inv.job_card and inv.job_card.customer) else "",
-            "vehicle_reg": inv.job_card.vehicle.registration_number if (inv.job_card and inv.job_card.vehicle) else "",
-            "vehicle_model": f"{inv.job_card.vehicle.make} {inv.job_card.vehicle.model}" if (inv.job_card and inv.job_card.vehicle) else "",
+            "job_card_number": jc_num,
+            "customer_name": cust_name,
+            "customer_phone": cust_phone,
+            "customer_gstin": cust_gstin,
+            "vehicle_reg": veh_reg,
+            "vehicle_model": veh_model,
             "finalized_at": inv.finalized_at.strftime("%d/%m/%Y") if inv.finalized_at else "",
             "date_iso": dt.strftime("%Y-%m-%d"),
             "parts_total": inv.parts_total,

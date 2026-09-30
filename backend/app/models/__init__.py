@@ -217,6 +217,9 @@ class Invoice(Base, TimestampMixin):
     voided_at = Column(DateTime, nullable=True)
     voided_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     void_reason = Column(Text, nullable=True)
+    line_items_snapshot = Column(Text, nullable=True) # JSON-encoded frozen snapshot of line items and metadata
+    pdf_file_path = Column(String(255), nullable=True) # Path to sealed disk PDF artifact
+    is_locked = Column(Boolean, default=False, nullable=False) # Financial immutability lock
 
     job_card = relationship("JobCard", back_populates="invoice")
     finalizer = relationship("User", foreign_keys=[finalized_by])

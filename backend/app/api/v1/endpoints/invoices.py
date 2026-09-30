@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -24,7 +25,27 @@ from app.services.pdf_service import generate_invoice_pdf
 router = APIRouter()
 
 def sync_invoice_calculations(db: Session, invoice: Invoice):
-    """Authoritative recalculation for the given invoice."""
+    """
+    Authoritative recalculation for the given invoice.
+    CRITICAL STATUTORY INVARIANCE:
+    If an invoice is FINALIZED or VOID, or marked is_locked, all line totals,
+    taxes, costs, and grand total are strictly immutable.
+    Only payment ledger balance and payment_status may be updated.
+    """
+    if invoice.status in ("FINALIZED", "VOID") or getattr(invoice, "is_locked", False):
+        all_payments = db.query(Payment).filter(Payment.invoice_id == invoice.id).all()
+        amount_paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in all_payments))
+        if invoice.status == "VOID":
+            invoice.payment_status = "VOIDED"
+        elif amount_paid == 0:
+            invoice.payment_status = "UNPAID"
+        elif amount_paid < invoice.grand_total:
+            invoice.payment_status = "PARTIALLY_PAID"
+        else:
+            invoice.payment_status = "PAID"
+        db.flush()
+        return None
+
     jc = invoice.job_card
 
     # Check if interstate: compare customer GSTIN state code with workshop GSTIN
@@ -159,102 +180,159 @@ def get_invoice_detail(
     paid = max(0, sum(-p.amount if p.is_reversal else p.amount for p in all_payments))
     balance = max(0, inv.grand_total - paid)
 
-    # Approved lines
-    approved_parts = [
-        {
-            "id": p.id, "description": p.description, "part_number": p.part_number,
-            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
-            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
-            "total": p.total, "status": p.status
-        }
-        for p in jc.parts_items if p.status in ("APPROVED", "USED")
-    ] if jc else []
+    # Check if frozen snapshot is available for FINALIZED / VOID invoices
+    snapshot_meta = {}
+    is_frozen = (inv.status in ("FINALIZED", "VOID") and bool(inv.line_items_snapshot))
+    if is_frozen:
+        try:
+            parsed = json.loads(inv.line_items_snapshot)
+            raw_items = parsed.get("items", []) if isinstance(parsed, dict) else parsed
+            snapshot_meta = parsed.get("metadata", {}) if isinstance(parsed, dict) else {}
+            approved_parts = [
+                {
+                    "id": idx + 1,
+                    "description": item.get("description"),
+                    "part_number": item.get("part_number"),
+                    "quantity": item.get("quantity"),
+                    "unit": item.get("unit", "pcs"),
+                    "unit_price": item.get("unit_price"),
+                    "cost_price": item.get("cost_price", 0),
+                    "hsn_code": item.get("hsn_sac", "8708"),
+                    "gst_rate": item.get("gst_rate", 18),
+                    "total": item.get("total"),
+                    "status": item.get("status", "APPROVED")
+                }
+                for idx, item in enumerate(raw_items) if item.get("type") == "PART"
+            ]
+            approved_labour = [
+                {
+                    "id": idx + 1,
+                    "description": item.get("description"),
+                    "quantity": item.get("quantity"),
+                    "unit_price": item.get("unit_price"),
+                    "cost_price": item.get("cost_price", 0),
+                    "sac_code": item.get("hsn_sac", "998729"),
+                    "gst_rate": item.get("gst_rate", 18),
+                    "total": item.get("total"),
+                    "status": item.get("status", "APPROVED")
+                }
+                for idx, item in enumerate(raw_items) if item.get("type") == "LABOUR"
+            ]
+            recommended_parts = []
+            rejected_parts = []
+            excluded_parts = []
+            recommended_labour = []
+            rejected_labour = []
+            excluded_labour = []
+        except Exception:
+            is_frozen = False
 
-    recommended_parts = [
-        {
-            "id": p.id, "description": p.description, "part_number": p.part_number,
-            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
-            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
-            "total": p.total, "status": p.status
-        }
-        for p in jc.parts_items if p.status == "RECOMMENDED"
-    ] if jc else []
+    if not is_frozen:
+        # Live query from Job Card lines
+        approved_parts = [
+            {
+                "id": p.id, "description": p.description, "part_number": p.part_number,
+                "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+                "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+                "total": p.total, "status": p.status
+            }
+            for p in jc.parts_items if p.status in ("APPROVED", "USED")
+        ] if jc else []
 
-    rejected_parts = [
-        {
-            "id": p.id, "description": p.description, "part_number": p.part_number,
-            "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
-            "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
-            "total": p.total, "status": p.status
-        }
-        for p in jc.parts_items if p.status == "REJECTED"
-    ] if jc else []
-    
-    # Excluded (rejected or pending) lines for backwards compatibility
-    excluded_parts = [
-        {"id": p.id, "description": p.description, "quantity": p.quantity, "unit_price": p.unit_price, "status": p.status}
-        for p in jc.parts_items if p.status not in ("APPROVED", "USED")
-    ] if jc else []
+        recommended_parts = [
+            {
+                "id": p.id, "description": p.description, "part_number": p.part_number,
+                "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+                "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+                "total": p.total, "status": p.status
+            }
+            for p in jc.parts_items if p.status == "RECOMMENDED"
+        ] if jc else []
 
-    approved_labour = [
-        {
-            "id": l.id, "description": l.description, "quantity": l.quantity,
-            "unit_price": l.unit_price, "cost_price": l.cost_price,
-            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
-            "total": l.total, "status": l.status
-        }
-        for l in jc.labour_items if l.status in ("APPROVED", "DONE")
-    ] if jc else []
+        rejected_parts = [
+            {
+                "id": p.id, "description": p.description, "part_number": p.part_number,
+                "quantity": p.quantity, "unit": p.unit, "unit_price": p.unit_price,
+                "cost_price": p.cost_price, "hsn_code": p.hsn_code, "gst_rate": p.gst_rate,
+                "total": p.total, "status": p.status
+            }
+            for p in jc.parts_items if p.status == "REJECTED"
+        ] if jc else []
+        
+        excluded_parts = [
+            {"id": p.id, "description": p.description, "quantity": p.quantity, "unit_price": p.unit_price, "status": p.status}
+            for p in jc.parts_items if p.status not in ("APPROVED", "USED")
+        ] if jc else []
 
-    recommended_labour = [
-        {
-            "id": l.id, "description": l.description, "quantity": l.quantity,
-            "unit_price": l.unit_price, "cost_price": l.cost_price,
-            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
-            "total": l.total, "status": l.status
-        }
-        for l in jc.labour_items if l.status == "RECOMMENDED"
-    ] if jc else []
+        approved_labour = [
+            {
+                "id": l.id, "description": l.description, "quantity": l.quantity,
+                "unit_price": l.unit_price, "cost_price": l.cost_price,
+                "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+                "total": l.total, "status": l.status
+            }
+            for l in jc.labour_items if l.status in ("APPROVED", "DONE")
+        ] if jc else []
 
-    rejected_labour = [
-        {
-            "id": l.id, "description": l.description, "quantity": l.quantity,
-            "unit_price": l.unit_price, "cost_price": l.cost_price,
-            "sac_code": l.sac_code, "gst_rate": l.gst_rate,
-            "total": l.total, "status": l.status
-        }
-        for l in jc.labour_items if l.status == "REJECTED"
-    ] if jc else []
+        recommended_labour = [
+            {
+                "id": l.id, "description": l.description, "quantity": l.quantity,
+                "unit_price": l.unit_price, "cost_price": l.cost_price,
+                "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+                "total": l.total, "status": l.status
+            }
+            for l in jc.labour_items if l.status == "RECOMMENDED"
+        ] if jc else []
 
-    excluded_labour = [
-        {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "status": l.status}
-        for l in jc.labour_items if l.status not in ("APPROVED", "DONE")
-    ] if jc else []
+        rejected_labour = [
+            {
+                "id": l.id, "description": l.description, "quantity": l.quantity,
+                "unit_price": l.unit_price, "cost_price": l.cost_price,
+                "sac_code": l.sac_code, "gst_rate": l.gst_rate,
+                "total": l.total, "status": l.status
+            }
+            for l in jc.labour_items if l.status == "REJECTED"
+        ] if jc else []
+
+        excluded_labour = [
+            {"id": l.id, "description": l.description, "quantity": l.quantity, "unit_price": l.unit_price, "status": l.status}
+            for l in jc.labour_items if l.status not in ("APPROVED", "DONE")
+        ] if jc else []
 
     # Estimate calculations for transparency
     est_parts_tot = sum(p["total"] for p in approved_parts) + sum(p["total"] for p in recommended_parts)
     est_labour_tot = sum(l["total"] for l in approved_labour) + sum(l["total"] for l in recommended_labour)
     est_grand = max(0, est_parts_tot + est_labour_tot + inv.other_charges_total - inv.discount)
 
+    cust_name = snapshot_meta.get("customer_name") or (jc.customer.name if (jc and jc.customer) else "")
+    cust_phone = snapshot_meta.get("customer_phone") or (jc.customer.phone if (jc and jc.customer) else "")
+    cust_gstin = snapshot_meta.get("customer_gstin") or (getattr(jc.customer, "gstin", "") if (jc and jc.customer) else "")
+    veh_reg = snapshot_meta.get("vehicle_reg") or (jc.vehicle.registration_number if (jc and jc.vehicle) else "")
+    veh_make = snapshot_meta.get("vehicle_make") or (jc.vehicle.make if (jc and jc.vehicle) else "")
+    veh_model = snapshot_meta.get("vehicle_model") or (jc.vehicle.model if (jc and jc.vehicle) else "")
+    odometer_val = snapshot_meta.get("odometer", (jc.odometer if (jc and jc.vehicle) else 0))
+
     return {
         "id": inv.id,
         "invoice_number": inv.invoice_number,
         "status": inv.status,
+        "is_locked": getattr(inv, "is_locked", False),
+        "pdf_file_path": getattr(inv, "pdf_file_path", None),
         "job_card_id": jc.id if jc else None,
-        "job_card_number": jc.job_card_number if jc else "",
+        "job_card_number": snapshot_meta.get("job_card_number") or (jc.job_card_number if jc else ""),
         "customer": {
-            "id": jc.customer.id,
-            "name": jc.customer.name,
-            "phone": jc.customer.phone,
-            "gstin": getattr(jc.customer, "gstin", "")
-        } if (jc and jc.customer) else None,
+            "id": jc.customer.id if (jc and jc.customer) else None,
+            "name": cust_name,
+            "phone": cust_phone,
+            "gstin": cust_gstin
+        } if (cust_name or (jc and jc.customer)) else None,
         "vehicle": {
-            "id": jc.vehicle.id,
-            "registration_number": jc.vehicle.registration_number,
-            "make": jc.vehicle.make,
-            "model": jc.vehicle.model,
-            "odometer": jc.odometer
-        } if (jc and jc.vehicle) else None,
+            "id": jc.vehicle.id if (jc and jc.vehicle) else None,
+            "registration_number": veh_reg,
+            "make": veh_make,
+            "model": veh_model,
+            "odometer": odometer_val
+        } if (veh_reg or (jc and jc.vehicle)) else None,
         "parts_total": inv.parts_total,
         "labour_total": inv.labour_total,
         "other_charges_total": inv.other_charges_total,
@@ -392,19 +470,80 @@ def finalize_invoice(
     if inv.status != "DRAFT":
         raise HTTPException(status_code=400, detail="Only DRAFT invoices can be finalised")
 
-    # Retry loop handles the rare case where two concurrent finalize
-    # requests generate the same sequence number before either commits.
+    # Authoritative recalculation while still DRAFT to lock in final approved numbers
+    sync_invoice_calculations(db, inv)
+
+    # Build immutable line items and metadata snapshot
+    jc = inv.job_card
+    snapshot_items = []
+    if jc:
+        for p in jc.parts_items:
+            if p.status in ("APPROVED", "USED"):
+                snapshot_items.append({
+                    "type": "PART",
+                    "id": p.id,
+                    "description": p.description,
+                    "part_number": p.part_number,
+                    "quantity": p.quantity,
+                    "unit": p.unit,
+                    "unit_price": p.unit_price,
+                    "cost_price": p.cost_price,
+                    "hsn_sac": getattr(p, "hsn_code", "8708"),
+                    "gst_rate": p.gst_rate,
+                    "tax_amount": getattr(p, "tax_amount", 0),
+                    "total": p.total,
+                    "status": p.status
+                })
+        for l in jc.labour_items:
+            if l.status in ("APPROVED", "DONE"):
+                snapshot_items.append({
+                    "type": "LABOUR",
+                    "id": l.id,
+                    "description": l.description,
+                    "quantity": l.quantity,
+                    "unit_price": l.unit_price,
+                    "cost_price": l.cost_price,
+                    "hsn_sac": getattr(l, "sac_code", "998729"),
+                    "gst_rate": l.gst_rate,
+                    "tax_amount": getattr(l, "tax_amount", 0),
+                    "total": l.total,
+                    "status": l.status
+                })
+
+    snapshot_metadata = {
+        "job_card_number": jc.job_card_number if jc else "",
+        "customer_name": jc.customer.name if (jc and jc.customer) else "",
+        "customer_phone": jc.customer.phone if (jc and jc.customer) else "",
+        "customer_gstin": getattr(jc.customer, "gstin", "") if (jc and jc.customer) else "",
+        "vehicle_reg": jc.vehicle.registration_number if (jc and jc.vehicle) else "",
+        "vehicle_make": jc.vehicle.make if (jc and jc.vehicle) else "",
+        "vehicle_model": jc.vehicle.model if (jc and jc.vehicle) else "",
+        "odometer": jc.odometer if (jc and jc.vehicle) else 0,
+        "finalized_at": datetime.utcnow().isoformat(),
+        "finalized_by": current_user.id
+    }
+    snapshot_payload = {
+        "items": snapshot_items,
+        "metadata": snapshot_metadata,
+        "other_charges": [
+            {"description": oc.description, "amount": oc.amount} for oc in inv.other_charges
+        ],
+        "frozen_at": datetime.utcnow().isoformat()
+    }
+
+    inv.line_items_snapshot = json.dumps(snapshot_payload)
+    inv.is_locked = True
+    inv.status = "FINALIZED"
+    inv.finalized_at = datetime.utcnow()
+    inv.finalized_by = current_user.id
+
+    # Retry loop handles concurrent finalization
     max_retries = 3
+    inv_number = None
     for attempt in range(max_retries):
         try:
             inv_number = generate_invoice_number(db)
             inv.invoice_number = inv_number
-            inv.status = "FINALIZED"
-            inv.finalized_at = datetime.utcnow()
-            inv.finalized_by = current_user.id
-
-            # Authoritative recalculation under FINALIZED status (strictly approved lines only)
-            sync_invoice_calculations(db, inv)
 
             record_audit(db, current_user.id, "INVOICE_FINALIZE", "invoice", str(inv.id), None, {"number": inv_number, "grand_total": inv.grand_total})
             db.commit()
@@ -417,13 +556,17 @@ def finalize_invoice(
                     status_code=500,
                     detail="Failed to generate unique invoice number after multiple attempts. Please try again."
                 )
-            # Retry with a fresh sequence number
             continue
 
-    # Auto-generate and save PDF to documents/invoices/YYYY/
-    setting = db.query(Setting).filter(Setting.key == "business_profile").first()
-    profile = json.loads(setting.value_json) if setting else {}
-    generate_invoice_pdf(inv, profile, save_to_disk=True)
+    # Auto-generate and seal PDF to documents/invoices/YYYY/
+    try:
+        setting = db.query(Setting).filter(Setting.key == "business_profile").first()
+        profile = json.loads(setting.value_json) if setting else {}
+        generate_invoice_pdf(inv, profile, save_to_disk=True)
+        db.commit()
+    except Exception as e:
+        # PDF generation failure should not rollback the finalization, but log
+        print(f"Warning: Failed to seal invoice PDF to disk: {e}")
 
     return {"message": "Invoice finalised successfully", "invoice_number": inv_number}
 
@@ -444,9 +587,45 @@ def void_invoice(
     inv.voided_at = datetime.utcnow()
     inv.voided_by = admin.id
     inv.void_reason = req.reason.strip()
+    inv.is_locked = True
+
+    # Automatic reversal of active unreversed payments to preserve double-entry integrity
+    for p in inv.payments:
+        if not p.is_reversal:
+            already_reversed = db.query(Payment).filter(
+                Payment.invoice_id == inv.id,
+                Payment.is_reversal == True,
+                Payment.reference == f"REV-{p.id}"
+            ).first()
+            if not already_reversed:
+                reversal = Payment(
+                    invoice_id=inv.id,
+                    amount=p.amount,
+                    method=p.method,
+                    reference=f"REV-{p.id}",
+                    is_reversal=True,
+                    paid_at=datetime.utcnow(),
+                    received_by=admin.id,
+                    note=f"Automatic reversal on VOID: {req.reason.strip()}"
+                )
+                db.add(reversal)
+
+    db.flush()
+    sync_invoice_calculations(db, inv)
 
     record_audit(db, admin.id, "INVOICE_VOID", "invoice", str(inv.id), None, {"reason": req.reason})
     db.commit()
+    db.refresh(inv)
+
+    # Re-generate and seal PDF with prominent VOID watermark
+    try:
+        setting = db.query(Setting).filter(Setting.key == "business_profile").first()
+        profile = json.loads(setting.value_json) if setting else {}
+        generate_invoice_pdf(inv, profile, save_to_disk=True)
+        db.commit()
+    except Exception as e:
+        print(f"Warning: Failed to seal VOID PDF to disk: {e}")
+
     return {"message": "Invoice marked as VOID"}
 
 @router.get("/{invoice_id}/pdf")
@@ -459,10 +638,18 @@ def get_invoice_pdf_endpoint(
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
 
-    setting = db.query(Setting).filter(Setting.key == "business_profile").first()
-    profile = json.loads(setting.value_json) if setting else {}
+    # If sealed on disk and exists, stream byte-for-byte directly
+    if inv.pdf_file_path and os.path.exists(inv.pdf_file_path):
+        with open(inv.pdf_file_path, "rb") as f:
+            pdf_bytes = f.read()
+    else:
+        setting = db.query(Setting).filter(Setting.key == "business_profile").first()
+        profile = json.loads(setting.value_json) if setting else {}
+        save_to_disk = (inv.status in ("FINALIZED", "VOID"))
+        pdf_bytes = generate_invoice_pdf(inv, profile, save_to_disk=save_to_disk)
+        if save_to_disk:
+            db.commit()
 
-    pdf_bytes = generate_invoice_pdf(inv, profile, save_to_disk=False)
     filename = f"{inv.invoice_number or 'draft_invoice'}.pdf"
     return Response(
         content=pdf_bytes,

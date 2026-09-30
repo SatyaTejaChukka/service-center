@@ -172,7 +172,30 @@ def generate_invoice_pdf(
     cust = jc.customer if jc else None
     veh = jc.vehicle if jc else None
 
-    cust_gstin_str = f"<br/><b>GSTIN:</b> {cust.gstin}" if (cust and cust.gstin) else "<br/><b>Type:</b> Consumer (B2C)"
+    # Check if frozen snapshot is available for FINALIZED / VOID invoices
+    snapshot_items = None
+    snapshot_meta = {}
+    if invoice.status in ("FINALIZED", "VOID") and getattr(invoice, "line_items_snapshot", None):
+        try:
+            parsed = json.loads(invoice.line_items_snapshot)
+            if isinstance(parsed, dict):
+                snapshot_items = parsed.get("items", [])
+                snapshot_meta = parsed.get("metadata", {})
+            elif isinstance(parsed, list):
+                snapshot_items = parsed
+        except Exception:
+            snapshot_items = None
+
+    cust_name = snapshot_meta.get("customer_name") or (cust.name if cust else "")
+    cust_phone = snapshot_meta.get("customer_phone") or (cust.phone if cust else "")
+    cust_gstin_val = snapshot_meta.get("customer_gstin") or (getattr(cust, "gstin", "") if cust else "")
+    veh_reg = snapshot_meta.get("vehicle_reg") or (veh.registration_number if veh else "")
+    veh_make = snapshot_meta.get("vehicle_make") or (veh.make if veh else "")
+    veh_model = snapshot_meta.get("vehicle_model") or (veh.model if veh else "")
+    jc_number = snapshot_meta.get("job_card_number") or (jc.job_card_number if jc else "")
+    odometer_val = snapshot_meta.get("odometer", (jc.odometer if jc else 0))
+
+    cust_gstin_str = f"<br/><b>GSTIN:</b> {cust_gstin_val}" if cust_gstin_val else "<br/><b>Type:</b> Consumer (B2C)"
 
     meta_data = [
         [
@@ -180,16 +203,16 @@ def generate_invoice_pdf(
             Paragraph(f"<b>Date:</b> {format_date(invoice.finalized_at or invoice.created_at)}", right_style)
         ],
         [
-            Paragraph(f"<b>Job Card:</b> {jc.job_card_number if jc else ''}", normal_style),
+            Paragraph(f"<b>Job Card:</b> {jc_number}", normal_style),
             Paragraph(f"<b>Status:</b> {invoice.status}", right_bold)
         ],
         [
-            Paragraph(f"<b>Customer:</b> {cust.name if cust else ''} &bull; {cust.phone if cust else ''}{cust_gstin_str}", normal_style),
-            Paragraph(f"<b>Vehicle:</b> {veh.make if veh else ''} {veh.model if veh else ''}", right_style)
+            Paragraph(f"<b>Customer:</b> {cust_name} &bull; {cust_phone}{cust_gstin_str}", normal_style),
+            Paragraph(f"<b>Vehicle:</b> {veh_make} {veh_model}", right_style)
         ],
         [
-            Paragraph(f"<b>Reg No:</b> {veh.registration_number if veh else ''}", normal_style),
-            Paragraph(f"<b>Odometer:</b> {jc.odometer if jc else 0:,} km", right_style)
+            Paragraph(f"<b>Reg No:</b> {veh_reg}", normal_style),
+            Paragraph(f"<b>Odometer:</b> {odometer_val:,} km" if isinstance(odometer_val, int) else f"<b>Odometer:</b> {odometer_val}", right_style)
         ]
     ]
 
@@ -202,8 +225,23 @@ def generate_invoice_pdf(
     story.append(meta_table)
     story.append(Spacer(1, 12))
 
-    # 3. Parts Table (Approved only if finalized, active non-rejected if draft)
-    if invoice.status == "FINALIZED":
+    # Helper class for frozen snapshot items
+    class FrozenPdfItem:
+        def __init__(self, data: Dict[str, Any]):
+            self.description = data.get("description", "")
+            self.part_number = data.get("part_number")
+            self.quantity = data.get("quantity", 1)
+            self.unit = data.get("unit", "pcs")
+            self.unit_price = data.get("unit_price", 0)
+            self.total = data.get("total", 0)
+            self.status = data.get("status", "APPROVED")
+            self.hsn_code = data.get("hsn_sac", "8708")
+            self.sac_code = data.get("hsn_sac", "998729")
+
+    # 3. Parts Table (Frozen snapshot if finalized/void, else live query)
+    if snapshot_items is not None:
+        active_parts = [FrozenPdfItem(i) for i in snapshot_items if i.get("type") == "PART"]
+    elif invoice.status == "FINALIZED":
         active_parts = [p for p in jc.parts_items if p.status in ("APPROVED", "USED")] if jc else []
     else:
         active_parts = [p for p in jc.parts_items if p.status != "REJECTED"] if jc else []
@@ -254,8 +292,10 @@ def generate_invoice_pdf(
         story.append(parts_table)
         story.append(Spacer(1, 10))
 
-    # 4. Labour Table (Approved only if finalized, active non-rejected if draft)
-    if invoice.status == "FINALIZED":
+    # 4. Labour Table (Frozen snapshot if finalized/void, else live query)
+    if snapshot_items is not None:
+        active_labour = [FrozenPdfItem(i) for i in snapshot_items if i.get("type") == "LABOUR"]
+    elif invoice.status == "FINALIZED":
         active_labour = [l for l in jc.labour_items if l.status in ("APPROVED", "DONE")] if jc else []
     else:
         active_labour = [l for l in jc.labour_items if l.status != "REJECTED"] if jc else []
@@ -382,6 +422,7 @@ def generate_invoice_pdf(
         file_path = dest_dir / f"{invoice.invoice_number}.pdf"
         with open(file_path, "wb") as f:
             f.write(pdf_bytes)
+        invoice.pdf_file_path = str(file_path)
 
     return pdf_bytes
 

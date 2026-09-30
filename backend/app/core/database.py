@@ -84,6 +84,12 @@ def run_schema_migrations():
             conn.execute(text("ALTER TABLE invoices ADD COLUMN total_cost INTEGER DEFAULT 0 NOT NULL;"))
         if "gross_profit" not in inv_cols:
             conn.execute(text("ALTER TABLE invoices ADD COLUMN gross_profit INTEGER DEFAULT 0 NOT NULL;"))
+        if "line_items_snapshot" not in inv_cols:
+            conn.execute(text("ALTER TABLE invoices ADD COLUMN line_items_snapshot TEXT;"))
+        if "pdf_file_path" not in inv_cols:
+            conn.execute(text("ALTER TABLE invoices ADD COLUMN pdf_file_path VARCHAR(255);"))
+        if "is_locked" not in inv_cols:
+            conn.execute(text("ALTER TABLE invoices ADD COLUMN is_locked BOOLEAN DEFAULT 0 NOT NULL;"))
 
 def init_db():
     """Initializes the database schema and verifies integrity."""
