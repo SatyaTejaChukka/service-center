@@ -533,7 +533,7 @@ def add_labour_item(
         total=line_tot,
         cost_price=req.cost_price or 0,
         sac_code=req.sac_code or "998729",
-        gst_rate=int(req.gst_rate or 18),
+        gst_rate=int(req.gst_rate if req.gst_rate is not None else 18),
         status=req.status,
         catalog_id=req.catalog_id
     )
@@ -565,6 +565,7 @@ def delete_labour_item(
     db.commit()
     return {"message": "Labour line removed"}
 
+@router.put("/{job_card_id}/labour-items/{lid}")
 @router.patch("/{job_card_id}/labour-items/{lid}")
 def update_labour_item(
     job_card_id: int,
@@ -598,7 +599,7 @@ def update_labour_item(
         item.cost_price = int(data["cost_price"])
     if "sac_code" in data:
         item.sac_code = str(data["sac_code"]).strip()
-    if "gst_rate" in data:
+    if "gst_rate" in data and data["gst_rate"] is not None:
         item.gst_rate = int(data["gst_rate"])
     if "description" in data and data["description"].strip():
         item.description = data["description"].strip()
@@ -635,7 +636,7 @@ def add_part_item(
         unit_price=req.unit_price,
         cost_price=req.cost_price or req.purchase_cost or 0,
         hsn_code=req.hsn_code or "8708",
-        gst_rate=int(req.gst_rate or 18),
+        gst_rate=int(req.gst_rate if req.gst_rate is not None else 18),
         total=line_tot,
         status=req.status,
         catalog_id=req.catalog_id
@@ -668,6 +669,7 @@ def delete_part_item(
     db.commit()
     return {"message": "Part line removed"}
 
+@router.put("/{job_card_id}/parts-items/{pid}")
 @router.patch("/{job_card_id}/parts-items/{pid}")
 def update_part_item(
     job_card_id: int,

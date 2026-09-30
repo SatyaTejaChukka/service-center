@@ -18,7 +18,7 @@ def get_labour_catalog(db: Session = Depends(get_db), current_user: User = Depen
 def create_labour_catalog_item(
     data: dict,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin)
+    current_user: User = Depends(get_current_user)
 ):
     name = data.get("name", "").strip()
     if not name:
@@ -28,7 +28,7 @@ def create_labour_catalog_item(
         raise HTTPException(status_code=400, detail="Default rate cannot be negative")
     cost_price = data.get("cost_price", 0)
     sac_code = data.get("sac_code", "998729")
-    gst_rate = data.get("gst_rate", 18.0)
+    gst_rate = float(data.get("gst_rate", 18.0) if data.get("gst_rate") is not None else 18.0)
 
     existing = db.query(LabourCatalog).filter(LabourCatalog.name == name).first()
     if existing:
@@ -55,11 +55,12 @@ def create_labour_catalog_item(
     return item
 
 @router.put("/labour/{item_id}", response_model=LabourCatalogItem)
+@router.patch("/labour/{item_id}", response_model=LabourCatalogItem)
 def update_labour_catalog_item(
     item_id: int,
     data: dict,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin)
+    current_user: User = Depends(get_current_user)
 ):
     item = db.query(LabourCatalog).filter(LabourCatalog.id == item_id).first()
     if not item:
@@ -67,28 +68,35 @@ def update_labour_catalog_item(
 
     if "name" in data and str(data["name"]).strip():
         new_name = str(data["name"]).strip()
-        conflict = db.query(LabourCatalog).filter(LabourCatalog.name == new_name, LabourCatalog.id != item_id).first()
+        conflict = db.query(LabourCatalog).filter(
+            LabourCatalog.name == new_name,
+            LabourCatalog.id != item_id,
+            LabourCatalog.is_active == True
+        ).first()
         if conflict:
             raise HTTPException(status_code=400, detail="Another labour item with this name already exists")
         item.name = new_name
-    if "default_rate" in data:
+    if "default_rate" in data and data["default_rate"] is not None:
         rate = int(data["default_rate"])
         if rate < 0:
             raise HTTPException(status_code=400, detail="Default rate cannot be negative")
         item.default_rate = rate
-    if "cost_price" in data:
+    if "cost_price" in data and data["cost_price"] is not None:
         item.cost_price = max(0, int(data["cost_price"]))
     if "sac_code" in data:
         item.sac_code = str(data["sac_code"]).strip() or "998729"
-    if "gst_rate" in data:
-        item.gst_rate = float(data["gst_rate"])
+    if "gst_rate" in data and data["gst_rate"] is not None:
+        try:
+            item.gst_rate = float(data["gst_rate"])
+        except (ValueError, TypeError):
+            pass
 
     db.commit()
     db.refresh(item)
     return item
 
 @router.delete("/labour/{item_id}")
-def deactivate_labour_item(item_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def deactivate_labour_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(LabourCatalog).filter(LabourCatalog.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -105,7 +113,7 @@ def get_parts_catalog(db: Session = Depends(get_db), current_user: User = Depend
 def create_parts_catalog_item(
     data: dict,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin)
+    current_user: User = Depends(get_current_user)
 ):
     name = data.get("name", "").strip()
     if not name:
@@ -116,10 +124,10 @@ def create_parts_catalog_item(
     cost_price = data.get("cost_price", data.get("purchase_cost", 0))
     if cost_price < 0:
         cost_price = 0
-    part_no = data.get("part_number", "").strip() or None
+    part_no = data.get("part_number", "").strip() if data.get("part_number") else None
     unit = data.get("unit", "pcs").strip() or "pcs"
     hsn_code = data.get("hsn_code", "8708").strip() or "8708"
-    gst_rate = data.get("gst_rate", 18.0)
+    gst_rate = float(data.get("gst_rate", 18.0) if data.get("gst_rate") is not None else 18.0)
 
     existing = db.query(PartsCatalog).filter(PartsCatalog.name == name).first()
     if existing:
@@ -151,11 +159,12 @@ def create_parts_catalog_item(
     return item
 
 @router.put("/parts/{item_id}", response_model=PartsCatalogItem)
+@router.patch("/parts/{item_id}", response_model=PartsCatalogItem)
 def update_parts_catalog_item(
     item_id: int,
     data: dict,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_admin)
+    current_user: User = Depends(get_current_user)
 ):
     item = db.query(PartsCatalog).filter(PartsCatalog.id == item_id).first()
     if not item:
@@ -163,7 +172,11 @@ def update_parts_catalog_item(
 
     if "name" in data and str(data["name"]).strip():
         new_name = str(data["name"]).strip()
-        conflict = db.query(PartsCatalog).filter(PartsCatalog.name == new_name, PartsCatalog.id != item_id).first()
+        conflict = db.query(PartsCatalog).filter(
+            PartsCatalog.name == new_name,
+            PartsCatalog.id != item_id,
+            PartsCatalog.is_active == True
+        ).first()
         if conflict:
             raise HTTPException(status_code=400, detail="Another part with this name already exists")
         item.name = new_name
@@ -171,27 +184,30 @@ def update_parts_catalog_item(
         item.part_number = str(data["part_number"]).strip() if data["part_number"] else None
     if "unit" in data and str(data["unit"]).strip():
         item.unit = str(data["unit"]).strip()
-    if "default_price" in data:
+    if "default_price" in data and data["default_price"] is not None:
         price = int(data["default_price"])
         if price < 0:
             raise HTTPException(status_code=400, detail="Default price cannot be negative")
         item.default_price = price
-    cost = data.get("cost_price", data.get("purchase_cost"))
+    cost = data.get("cost_price") if data.get("cost_price") is not None else data.get("purchase_cost")
     if cost is not None:
         c_val = max(0, int(cost))
         item.purchase_cost = c_val
         item.cost_price = c_val
     if "hsn_code" in data:
         item.hsn_code = str(data["hsn_code"]).strip() or "8708"
-    if "gst_rate" in data:
-        item.gst_rate = float(data["gst_rate"])
+    if "gst_rate" in data and data["gst_rate"] is not None:
+        try:
+            item.gst_rate = float(data["gst_rate"])
+        except (ValueError, TypeError):
+            pass
 
     db.commit()
     db.refresh(item)
     return item
 
 @router.delete("/parts/{item_id}")
-def deactivate_parts_item(item_id: int, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+def deactivate_parts_item(item_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(PartsCatalog).filter(PartsCatalog.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")

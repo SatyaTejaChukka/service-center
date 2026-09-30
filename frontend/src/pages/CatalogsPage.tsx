@@ -10,6 +10,7 @@ export const CatalogsPage: React.FC = () => {
   const [labour, setLabour] = useState<any[]>([]);
   const [parts, setParts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const canManageCatalog = user?.role === 'ADMIN' || user?.role === 'STAFF';
 
   // New labour form
   const [newLabourName, setNewLabourName] = useState('');
@@ -73,7 +74,7 @@ export const CatalogsPage: React.FC = () => {
     setEditLabourRate(item.default_rate ? Math.round(item.default_rate / 100) : '');
     setEditLabourCost(item.cost_price ? Math.round(item.cost_price / 100) : '');
     setEditLabourSac(item.sac_code || '998729');
-    setEditLabourGst(item.gst_rate ?? 18);
+    setEditLabourGst(item.gst_rate !== undefined && item.gst_rate !== null ? Number(item.gst_rate) : 18);
   };
 
   const handleSaveEditLabour = async (e: React.FormEvent) => {
@@ -88,11 +89,11 @@ export const CatalogsPage: React.FC = () => {
           default_rate: Math.round(Number(editLabourRate || 0) * 100),
           cost_price: Math.round(Number(editLabourCost || 0) * 100),
           sac_code: editLabourSac.trim() || '998729',
-          gst_rate: Number(editLabourGst) || 18,
+          gst_rate: !isNaN(Number(editLabourGst)) ? Number(editLabourGst) : 18,
         }),
       });
       setEditingLabour(null);
-      fetchCatalogs();
+      await fetchCatalogs();
     } catch (err: any) {
       alert(err.message || 'Failed to update labour item');
     } finally {
@@ -108,7 +109,7 @@ export const CatalogsPage: React.FC = () => {
     setEditPartPrice(item.default_price ? Math.round(item.default_price / 100) : '');
     setEditPartCost((item.purchase_cost || item.cost_price) ? Math.round((item.purchase_cost || item.cost_price) / 100) : '');
     setEditPartHsn(item.hsn_code || '8708');
-    setEditPartGst(item.gst_rate ?? 18);
+    setEditPartGst(item.gst_rate !== undefined && item.gst_rate !== null ? Number(item.gst_rate) : 18);
   };
 
   const handleSaveEditPart = async (e: React.FormEvent) => {
@@ -120,17 +121,17 @@ export const CatalogsPage: React.FC = () => {
         method: 'PUT',
         body: JSON.stringify({
           name: editPartName.trim(),
-          part_number: editPartNumber.trim() || undefined,
+          part_number: editPartNumber.trim() || null,
           unit: editPartUnit,
           default_price: Math.round(Number(editPartPrice || 0) * 100),
           purchase_cost: Math.round(Number(editPartCost || 0) * 100),
           cost_price: Math.round(Number(editPartCost || 0) * 100),
           hsn_code: editPartHsn.trim() || '8708',
-          gst_rate: Number(editPartGst) || 18,
+          gst_rate: !isNaN(Number(editPartGst)) ? Number(editPartGst) : 18,
         }),
       });
       setEditingPart(null);
-      fetchCatalogs();
+      await fetchCatalogs();
     } catch (err: any) {
       alert(err.message || 'Failed to update part item');
     } finally {
@@ -149,7 +150,7 @@ export const CatalogsPage: React.FC = () => {
           default_rate: Math.round(Number(newLabourRate || 0) * 100),
           cost_price: Math.round(Number(newLabourCost || 0) * 100),
           sac_code: newLabourSac.trim() || '998729',
-          gst_rate: Number(newLabourGst) || 18,
+          gst_rate: !isNaN(Number(newLabourGst)) ? Number(newLabourGst) : 18,
         }),
       });
       setNewLabourName('');
@@ -169,13 +170,13 @@ export const CatalogsPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({
           name: newPartName.trim(),
-          part_number: newPartNumber.trim() || undefined,
+          part_number: newPartNumber.trim() || null,
           unit: newPartUnit,
           default_price: Math.round(Number(newPartPrice || 0) * 100),
           purchase_cost: Math.round(Number(newPartCost || 0) * 100),
           cost_price: Math.round(Number(newPartCost || 0) * 100),
           hsn_code: newPartHsn.trim() || '8708',
-          gst_rate: Number(newPartGst) || 18,
+          gst_rate: !isNaN(Number(newPartGst)) ? Number(newPartGst) : 18,
         }),
       });
       setNewPartName('');
@@ -277,7 +278,7 @@ export const CatalogsPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-center">
-                          {user?.role === 'ADMIN' && (
+                          {canManageCatalog && (
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 onClick={() => handleOpenEditLabour(l)}
@@ -305,7 +306,7 @@ export const CatalogsPage: React.FC = () => {
           </div>
 
           {/* Form */}
-          {user?.role === 'ADMIN' && (
+          {canManageCatalog && (
             <div className="bg-white p-5 rounded-xl border border-workshop-border shadow-2xs space-y-4 h-fit">
               <h4 className="font-bold text-sm text-workshop-text flex items-center gap-1.5">
                 <Plus className="w-4 h-4 text-brand" /> Add Labour Service
@@ -445,7 +446,7 @@ export const CatalogsPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-center">
-                          {user?.role === 'ADMIN' && (
+                          {canManageCatalog && (
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 onClick={() => handleOpenEditPart(p)}
@@ -473,7 +474,7 @@ export const CatalogsPage: React.FC = () => {
           </div>
 
           {/* Form */}
-          {user?.role === 'ADMIN' && (
+          {canManageCatalog && (
             <div className="bg-white p-5 rounded-xl border border-workshop-border shadow-2xs space-y-4 h-fit">
               <h4 className="font-bold text-sm text-workshop-text flex items-center gap-1.5">
                 <Plus className="w-4 h-4 text-brand" /> Add Spare Part
