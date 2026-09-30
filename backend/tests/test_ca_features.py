@@ -375,3 +375,89 @@ def test_catalog_item_editing():
         assert jc_data["invoice"]["grand_total"] == 160000
 
 
+def test_complaint_and_inspection_bay_workflow():
+    with TestClient(app) as client:
+        setup_data = {
+            "admin_username": "bay_admin",
+            "admin_password": "baypassword123",
+            "admin_full_name": "Bay Tech Admin",
+            "business_name": "Bay Workshop",
+            "business_address": "Bay Street 1",
+            "business_phone": "+91 91234 56789",
+            "business_email": "bay@workshop.com"
+        }
+        res_setup = client.post("/api/v1/auth/setup", json=setup_data)
+        assert res_setup.status_code == 200
+        token = res_setup.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Create customer and vehicle for test run
+        c_res = client.post("/api/v1/customers", json={
+            "name": "Karthik Bay Test",
+            "phone": "9998887766"
+        }, headers=headers)
+        cust_id = c_res.json()["id"]
+
+        v_res = client.post("/api/v1/vehicles", json={
+            "registration_number": "AP 09 TEST 5555",
+            "make": "Hyundai",
+            "model": "Creta",
+            "current_odometer": 32000,
+            "customer_id": cust_id
+        }, headers=headers)
+        veh_id = v_res.json()["id"]
+
+        # 2. Intake step: Open Job Card with customer reported complaint
+        jc_res = client.post("/api/v1/job-cards", json={
+            "customer_id": cust_id,
+            "vehicle_id": veh_id,
+            "odometer": 32000,
+            "complaints": ["AC not cooling adequately"]
+        }, headers=headers)
+        assert jc_res.status_code == 200
+        jc_id = jc_res.json()["id"]
+
+        # 3. Technician test run: Add technician finding
+        add_c_res = client.post(f"/api/v1/job-cards/{jc_id}/complaints", json={
+            "description": "[Tech Finding] Suspension lower arm bush cracked"
+        }, headers=headers)
+        assert add_c_res.status_code == 200
+        tech_comp = add_c_res.json()
+        assert "[Tech Finding]" in tech_comp["description"]
+        tech_cid = tech_comp["id"]
+
+        # 4. Edit complaint
+        edit_c_res = client.put(f"/api/v1/job-cards/{jc_id}/complaints/{tech_cid}", json={
+            "description": "[Tech Finding] Suspension lower arm bush cracked (play in LH wheel)"
+        }, headers=headers)
+        assert edit_c_res.status_code == 200
+        assert "LH wheel" in edit_c_res.json()["description"]
+
+        # 5. Technician multi-point bay inspection update
+        insp_res = client.put(f"/api/v1/job-cards/{jc_id}/inspections", json=[
+            {"category": "Suspension", "status": "NEEDS_ATTENTION", "notes": "LH lower arm play"},
+            {"category": "Brakes", "status": "NORMAL", "notes": "Pads 7mm good"},
+            {"category": "AC", "status": "NEEDS_ATTENTION", "notes": "Gas pressure low (25 PSI)"}
+        ], headers=headers)
+        assert insp_res.status_code == 200
+
+        # 6. Verify Job Card details reflects all complaints and inspections
+        detail_res = client.get(f"/api/v1/job-cards/{jc_id}", headers=headers)
+        assert detail_res.status_code == 200
+        detail = detail_res.json()
+        assert len(detail["complaints"]) == 2
+        susp_insp = next(i for i in detail["inspections"] if i["category"] == "Suspension")
+        assert susp_insp["status"] == "NEEDS_ATTENTION"
+        assert susp_insp["notes"] == "LH lower arm play"
+
+        # 7. Delete complaint
+        del_res = client.delete(f"/api/v1/job-cards/{jc_id}/complaints/{tech_cid}", headers=headers)
+        assert del_res.status_code == 200
+
+        # Verify complaint removed
+        detail_after = client.get(f"/api/v1/job-cards/{jc_id}", headers=headers).json()
+        assert len(detail_after["complaints"]) == 1
+        assert detail_after["complaints"][0]["description"] == "AC not cooling adequately"
+
+
+

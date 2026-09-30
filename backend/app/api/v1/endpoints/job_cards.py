@@ -445,6 +445,25 @@ def add_complaint(
     db.commit()
     return {"id": c.id, "sequence": c.sequence, "description": c.description}
 
+@router.put("/{job_card_id}/complaints/{cid}")
+def update_complaint(
+    job_card_id: int,
+    cid: int,
+    req: ComplaintCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    jc = db.query(JobCard).filter(JobCard.id == job_card_id).first()
+    if not jc:
+        raise HTTPException(status_code=404, detail="Job card not found")
+    c = db.query(Complaint).filter(Complaint.id == cid, Complaint.job_card_id == job_card_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    c.description = req.description.strip()
+    db.commit()
+    db.refresh(c)
+    return {"id": c.id, "sequence": c.sequence, "description": c.description}
+
 @router.delete("/{job_card_id}/complaints/{cid}")
 def remove_complaint(
     job_card_id: int,

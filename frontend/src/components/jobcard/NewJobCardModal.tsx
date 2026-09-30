@@ -376,6 +376,122 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
     };
   };
 
+  // Fast 2-step intake submission: Creates Job Card directly after Step 2 (Customer, Vehicle & Customer Complaints)
+  // Vehicle moves to bay for road test and inspection
+  const handleQuickIntakeSubmit = async () => {
+    if (!customerData.name.trim() || !customerData.phone.trim()) {
+      alert('Please enter Customer Name and Phone Number in Step 1.');
+      setStep(1);
+      return;
+    }
+    if (!vehicleData.registration_number.trim()) {
+      alert('Please enter Vehicle Registration Number in Step 1.');
+      setStep(1);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1. Create or get customer
+      let customerId = foundVehicle?.customer_id;
+      if (!customerId) {
+        try {
+          const cRes = await apiRequest<any>('/customers', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: customerData.name.trim(),
+              phone: customerData.phone.trim(),
+              alt_phone: customerData.alt_phone.trim() || undefined,
+              email: customerData.email.trim() || undefined,
+              address: customerData.address.trim() || undefined,
+            }),
+          });
+          customerId = cRes.id;
+        } catch (cErr: any) {
+          if (cErr.message.includes('already exists') || cErr.message.includes('409')) {
+            const searchCust = await apiRequest<any>(`/customers?search=${customerData.phone}`);
+            if (searchCust && searchCust.length > 0) {
+              customerId = searchCust[0].id;
+            }
+          } else {
+            throw cErr;
+          }
+        }
+      }
+
+      // 2. Create or get vehicle
+      let vehicleId = foundVehicle?.id;
+      if (!vehicleId) {
+        try {
+          const vRes = await apiRequest<any>('/vehicles', {
+            method: 'POST',
+            body: JSON.stringify({
+              registration_number: vehicleData.registration_number.trim(),
+              make: vehicleData.make.trim(),
+              model: vehicleData.model.trim(),
+              variant: vehicleData.variant.trim() || undefined,
+              fuel_type: vehicleData.fuel_type,
+              current_odometer: Number(vehicleData.odometer) || 0,
+              vin: vehicleData.vin.trim() || undefined,
+              engine_number: vehicleData.engine_number.trim() || undefined,
+              year: vehicleData.year ? Number(vehicleData.year) : undefined,
+              colour: vehicleData.colour.trim() || undefined,
+              customer_id: customerId,
+            }),
+          });
+          vehicleId = vRes.id;
+        } catch (vErr: any) {
+          const searchV = await apiRequest<any>(`/vehicles?search=${vehicleData.registration_number}`);
+          if (searchV && searchV.length > 0) {
+            vehicleId = searchV[0].id;
+          } else {
+            throw vErr;
+          }
+        }
+      }
+
+      // 3. Create Job Card with complaints
+      const jcRes = await apiRequest<any>('/job-cards', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_id: customerId,
+          vehicle_id: vehicleId,
+          odometer: Number(vehicleData.odometer) || 0,
+          fuel_level: vehicleData.fuel_level,
+          complaints: complaints,
+          notes: jobCardNotes.trim() || undefined,
+          assigned_to: assignedTo ? Number(assignedTo) : undefined,
+          promised_at: promisedAt ? new Date(promisedAt).toISOString() : undefined,
+        }),
+      });
+      const jcId = jcRes.id;
+
+      // 4. Seed standard inspection categories as NORMAL by default
+      const inspPayload = STANDARD_CATEGORIES.map((cat) => ({
+        category: cat,
+        status: inspections[cat]?.status || 'NORMAL',
+        notes: inspections[cat]?.notes || null,
+      }));
+      await apiRequest(`/job-cards/${jcId}/inspections`, {
+        method: 'PUT',
+        body: JSON.stringify(inspPayload),
+      });
+
+      // 5. Get final job card details
+      const finalDetail = await apiRequest<any>(`/job-cards/${jcId}`);
+      setCreatedJobCard(finalDetail);
+      setStep(6);
+      onJobCardCreated(jcId);
+    } catch (err: any) {
+      console.error('Fast intake creation error:', err);
+      setError(err.message || 'Failed to open job card');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Submit and create full Job Card
   const handleFinalSubmit = async () => {
     try {
@@ -546,14 +662,14 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
         onClick={(e) => e.stopPropagation()}
       >
         
-        {/* Header with 6-Step Indicator */}
+        {/* Header with 2-Way Intake & Bay Workflow */}
         <div className="px-6 py-4 border-b border-workshop-border bg-[#F8FAFC] flex items-center justify-between shrink-0">
           <div>
             <h3 className="font-display font-bold text-xl text-workshop-text">
               New Vehicle Service Job Card
             </h3>
             <p className="text-xs text-workshop-muted">
-              Guided 6-step workshop intake flow
+              Fast 2-Step Gate Intake • Send to Bay for Road Test &amp; Multi-Point Inspection
             </p>
           </div>
           <button
@@ -567,14 +683,14 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
         </div>
 
         {/* Stepper Bar */}
-        <div className="px-6 py-3 bg-white border-b border-workshop-border flex items-center justify-between text-xs overflow-x-auto shrink-0">
+        <div className="px-6 py-3 bg-white border-b border-workshop-border flex items-center justify-between text-xs overflow-x-auto shrink-0 gap-2">
           {[
             '1. Customer & Vehicle',
-            '2. Complaints',
-            '3. Inspection',
+            '2. Customer Complaints',
+            '3. Bay Inspection',
             '4. Work & Parts',
             '5. Approval',
-            '6. Summary'
+            '6. Ready / Opened'
           ].map((title, idx) => {
             const stepNum = idx + 1;
             const isCurrent = step === stepNum;
@@ -922,10 +1038,21 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
 
           {/* STEP 2: Complaints */}
           {step === 2 && (
-            <div className="space-y-6">
+            <div className="space-y-5">
+              {/* 2-Way Workflow Guidance Banner */}
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl flex items-start gap-2.5 text-xs text-blue-950">
+                <CalendarClock className="w-4 h-4 text-brand shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-brand-deep">Gate Intake (Step 2 of 2)</span>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Record the customer's stated complaints here. Once recorded, click <b>"✓ Create Job Card &amp; Send to Bay"</b> below to send the vehicle for road test and bay inspection. The technician will record test run findings, complete the multi-point checklist, and add required parts &amp; labour directly in the job card.
+                  </p>
+                </div>
+              </div>
+
               <div>
-                <h4 className="font-bold text-sm text-workshop-text mb-1">Itemised Customer Complaints</h4>
-                <p className="text-xs text-workshop-muted mb-4">Each issue reported by the customer is recorded as an individual item.</p>
+                <h4 className="font-bold text-sm text-workshop-text mb-1">Customer Stated Complaints</h4>
+                <p className="text-xs text-workshop-muted mb-4">Each issue reported by the customer is recorded as an individual voice of customer item.</p>
 
                 {/* Add new complaint input */}
                 <div className="flex gap-2 mb-4">
@@ -1514,15 +1641,15 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 Vehicle: <span className="font-semibold text-workshop-text">{createdJobCard.vehicle.registration_number}</span> ({createdJobCard.vehicle.make} {createdJobCard.vehicle.model}) &bull; Customer: <span className="font-semibold text-workshop-text">{createdJobCard.customer.name}</span>
               </p>
 
-              <div className="flex justify-center gap-3 pt-4">
-                <a
-                  href={getPdfUrl(`/job-cards/${createdJobCard.id}/pdf`)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-workshop-text text-sm font-semibold rounded-lg transition cursor-pointer shadow-2xs"
+              <div className="flex flex-wrap justify-center gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    onClose();
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-bold rounded-lg transition cursor-pointer shadow-md"
                 >
-                  <Printer className="w-4 h-4" /> Print Job Card PDF
-                </a>
+                  <span>Open Job Card to Fill Bay Inspection &amp; Estimate &rarr;</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1544,14 +1671,14 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
                 >
                   <MessageCircle className="w-4 h-4 fill-white" /> Send WhatsApp Gatepass
                 </button>
-                <button
-                  onClick={() => {
-                    onClose();
-                  }}
-                  className="px-5 py-2.5 bg-brand hover:bg-brand-deep text-white text-sm font-semibold rounded-lg transition cursor-pointer"
+                <a
+                  href={getPdfUrl(`/job-cards/${createdJobCard.id}/pdf`)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-workshop-text text-sm font-semibold rounded-lg transition cursor-pointer shadow-2xs"
                 >
-                  Go to Job Card Details
-                </button>
+                  <Printer className="w-4 h-4" /> Print Job Card PDF
+                </a>
               </div>
             </div>
           )}
@@ -1570,7 +1697,26 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
 
-            {step < 5 ? (
+            {step === 2 ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  className="px-3.5 py-2 text-xs font-semibold text-workshop-muted hover:text-workshop-text hover:bg-gray-100 rounded-lg transition cursor-pointer"
+                  title="Optionally add upfront inspection & parts estimate now"
+                >
+                  Advance to Estimate &rarr;
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={handleQuickIntakeSubmit}
+                  className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-workshop-green hover:opacity-90 rounded-lg transition cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {loading ? 'Opening Job Card...' : '✓ Create Job Card & Send to Bay (2 of 2)'}
+                </button>
+              </div>
+            ) : step < 5 ? (
               <button
                 type="button"
                 onClick={() => setStep(step + 1)}

@@ -21,7 +21,8 @@ import {
   Ban,
   UserCheck,
   RefreshCw,
-  Pencil
+  Pencil,
+  ClipboardCheck
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
@@ -104,6 +105,46 @@ export const getStatusConfig = (status: string) => {
       buttonClass: 'bg-white hover:bg-gray-50 border-workshop-border text-workshop-text',
     }
   );
+};
+
+export const STANDARD_CATEGORIES = [
+  'Engine', 'Brakes', 'Battery', 'Tyres', 'Suspension',
+  'Lights', 'Fluids', 'AC', 'Others'
+];
+
+export const COMMON_CUSTOMER_COMPLAINTS = [
+  'General Periodic Maintenance / Oil Change',
+  'Engine vibration or abnormal noise',
+  'Brake noise / spongy brake pedal',
+  'AC not cooling adequately',
+  'Wheel alignment / steering pull',
+  'Suspension thudding sound on bumps',
+  'Hard clutch / gear shift difficulty',
+  'Battery starting trouble / low voltage',
+  'Water wash & interior vacuuming',
+];
+
+export const TECH_FINDING_SUGGESTIONS = [
+  'Suspension lower arm bush torn / play detected',
+  'Brake pads worn (< 2mm remaining)',
+  'Engine oil sludged / past service interval',
+  'Coolant leakage near radiator hose / thermostat',
+  'Battery health weak / CCA below 60%',
+  'AC refrigerant low / leak at condenser',
+  'Tyre uneven wear / alignment pull noticed in road test',
+  'Drive belt cracked / tensioner bearing noise',
+  'Wiper blades streak / hardened rubber'
+];
+
+export const isTechFinding = (desc: string): boolean => {
+  if (!desc) return false;
+  const lower = desc.toLowerCase().trim();
+  return lower.startsWith('[tech') || lower.startsWith('[technician') || lower.startsWith('[bay');
+};
+
+export const cleanComplaintText = (desc: string): string => {
+  if (!desc) return '';
+  return desc.replace(/^\[(tech finding|technician finding|technician recommended|tech recommended|bay finding|tech)\]\s*/i, '').trim();
 };
 
 interface Props {
@@ -239,6 +280,23 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const [approvalMethod, setApprovalMethod] = useState('WHATSAPP');
   const [approvalNote, setApprovalNote] = useState('');
   const [approvalsMap, setApprovalsMap] = useState<Record<string, boolean>>({});
+
+  // Complaints management state
+  const [showAddComplaintModal, setShowAddComplaintModal] = useState(false);
+  const [newComplaintType, setNewComplaintType] = useState<'CUSTOMER' | 'TECH'>('CUSTOMER');
+  const [newComplaintDesc, setNewComplaintDesc] = useState('');
+  const [savingComplaint, setSavingComplaint] = useState(false);
+
+  // Edit Complaint Modal state
+  const [editingComplaint, setEditingComplaint] = useState<any | null>(null);
+  const [editComplaintType, setEditComplaintType] = useState<'CUSTOMER' | 'TECH'>('CUSTOMER');
+  const [editComplaintDesc, setEditComplaintDesc] = useState('');
+  const [updatingComplaint, setUpdatingComplaint] = useState(false);
+
+  // Multi-point Inspection Modal state
+  const [showInspectionModal, setShowInspectionModal] = useState(false);
+  const [inspectionDraft, setInspectionDraft] = useState<Record<string, { status: 'NORMAL' | 'NEEDS_ATTENTION'; notes: string }>>({});
+  const [savingInspections, setSavingInspections] = useState(false);
 
   // WhatsApp modal state
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
@@ -635,6 +693,157 @@ export const JobCardDetailPage: React.FC<Props> = ({
     } catch (err: any) {
       alert(err.message || 'Failed to record customer approvals');
     }
+  };
+
+  // Complaint handlers
+  const handleOpenAddComplaintModal = (type: 'CUSTOMER' | 'TECH' = 'CUSTOMER') => {
+    setNewComplaintType(type);
+    setNewComplaintDesc('');
+    setShowAddComplaintModal(true);
+  };
+
+  const handleAddComplaintSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newComplaintDesc.trim();
+    if (!trimmed) return;
+    try {
+      setSavingComplaint(true);
+      const finalDesc = newComplaintType === 'TECH' ? `[Tech Finding] ${trimmed}` : trimmed;
+      await apiRequest(`/job-cards/${jobCardId}/complaints`, {
+        method: 'POST',
+        body: JSON.stringify({ description: finalDesc })
+      });
+      setShowAddComplaintModal(false);
+      setNewComplaintDesc('');
+      await fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add complaint / finding');
+    } finally {
+      setSavingComplaint(false);
+    }
+  };
+
+  const handleOpenEditComplaint = (c: any) => {
+    const isTech = isTechFinding(c.description);
+    setEditingComplaint(c);
+    setEditComplaintType(isTech ? 'TECH' : 'CUSTOMER');
+    setEditComplaintDesc(cleanComplaintText(c.description));
+  };
+
+  const handleEditComplaintSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingComplaint) return;
+    const trimmed = editComplaintDesc.trim();
+    if (!trimmed) return;
+    try {
+      setUpdatingComplaint(true);
+      const finalDesc = editComplaintType === 'TECH' ? `[Tech Finding] ${trimmed}` : trimmed;
+      await apiRequest(`/job-cards/${jobCardId}/complaints/${editingComplaint.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ description: finalDesc })
+      });
+      setEditingComplaint(null);
+      await fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update complaint / finding');
+    } finally {
+      setUpdatingComplaint(false);
+    }
+  };
+
+  const handleDeleteComplaint = async (cid: number) => {
+    if (!window.confirm('Are you sure you want to remove this complaint / observation?')) return;
+    try {
+      await apiRequest(`/job-cards/${jobCardId}/complaints/${cid}`, {
+        method: 'DELETE'
+      });
+      await fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove complaint');
+    }
+  };
+
+  // Inspection handlers
+  const handleOpenInspectionModal = () => {
+    const map: Record<string, { status: 'NORMAL' | 'NEEDS_ATTENTION'; notes: string }> = {};
+    STANDARD_CATEGORIES.forEach((cat) => {
+      map[cat] = { status: 'NORMAL', notes: '' };
+    });
+    if (data?.inspections) {
+      data.inspections.forEach((insp: any) => {
+        map[insp.category] = {
+          status: insp.status === 'NEEDS_ATTENTION' ? 'NEEDS_ATTENTION' : 'NORMAL',
+          notes: insp.notes || ''
+        };
+      });
+    }
+    setInspectionDraft(map);
+    setShowInspectionModal(true);
+  };
+
+  const handleToggleDraftInspection = (category: string) => {
+    setInspectionDraft((prev) => {
+      const current = prev[category] || { status: 'NORMAL', notes: '' };
+      const nextStatus = current.status === 'NORMAL' ? 'NEEDS_ATTENTION' : 'NORMAL';
+      return {
+        ...prev,
+        [category]: { ...current, status: nextStatus }
+      };
+    });
+  };
+
+  const handleDraftInspectionNotes = (category: string, notes: string) => {
+    setInspectionDraft((prev) => {
+      const current = prev[category] || { status: 'NORMAL', notes: '' };
+      return {
+        ...prev,
+        [category]: { ...current, notes }
+      };
+    });
+  };
+
+  const handleMarkAllInspectionsNormal = () => {
+    setInspectionDraft((prev) => {
+      const updated: typeof prev = {};
+      STANDARD_CATEGORIES.forEach((cat) => {
+        updated[cat] = { ...(prev[cat] || { notes: '' }), status: 'NORMAL' };
+      });
+      return updated;
+    });
+  };
+
+  const handleSaveInspectionsSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    try {
+      setSavingInspections(true);
+      const payload = Object.entries(inspectionDraft).map(([category, item]) => ({
+        category,
+        status: item.status,
+        notes: item.notes.trim() || null
+      }));
+      await apiRequest(`/job-cards/${jobCardId}/inspections`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      setShowInspectionModal(false);
+      await fetchDetail();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update inspections');
+    } finally {
+      setSavingInspections(false);
+    }
+  };
+
+  const handleAddLabourForInspection = (category: string, notes?: string) => {
+    const desc = notes ? `${category}: ${notes}` : `${category} Service & Inspection`;
+    setLabourDesc(desc);
+    setShowAddLabourModal(true);
+  };
+
+  const handleAddPartForInspection = (category: string, notes?: string) => {
+    const desc = notes ? `${category}: ${notes}` : `${category} replacement component`;
+    setPartDesc(desc);
+    setShowAddPartModal(true);
   };
 
   if (loading) {
@@ -1049,47 +1258,228 @@ export const JobCardDetailPage: React.FC<Props> = ({
       )}
 
       {/* Complaints & Inspection Side by Side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         
-        {/* Customer Complaints */}
+        {/* Itemised Complaints & Technician Findings */}
         <div className="p-4 bg-white rounded-xl border border-workshop-border shadow-2xs space-y-3">
-          <h3 className="font-bold text-sm text-workshop-text">Itemised Customer Complaints</h3>
-          <div className="space-y-1.5">
-            {data.complaints.length === 0 ? (
-              <div className="text-xs text-workshop-muted py-2">No complaints recorded.</div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-workshop-border-soft pb-2.5">
+            <div>
+              <h3 className="font-bold text-sm text-workshop-text">
+                Itemised Complaints &amp; Bay Findings
+              </h3>
+              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-workshop-muted">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 font-medium">
+                  <User className="w-3 h-3 text-slate-500" />
+                  {data.complaints?.filter((c: any) => !isTechFinding(c.description)).length || 0} Customer
+                </span>
+                <span>&bull;</span>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200">
+                  <Wrench className="w-3 h-3 text-indigo-600" />
+                  {data.complaints?.filter((c: any) => isTechFinding(c.description)).length || 0} Tech Findings
+                </span>
+              </div>
+            </div>
+            {canEditItems && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddComplaintModal('TECH')}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold text-xs rounded-md shadow-2xs transition cursor-pointer"
+                  title="Add technician finding or test run observation"
+                >
+                  <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>+ Tech Finding</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddComplaintModal('CUSTOMER')}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-50 text-workshop-text border border-workshop-border font-semibold text-xs rounded-md shadow-2xs transition cursor-pointer"
+                  title="Add customer reported complaint"
+                >
+                  <Plus className="w-3.5 h-3.5 text-workshop-muted" />
+                  <span>+ Issue</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2 pt-1 max-h-80 overflow-y-auto pr-0.5">
+            {(!data.complaints || data.complaints.length === 0) ? (
+              <div className="text-center py-6 text-xs text-workshop-muted bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                <p className="font-medium text-workshop-text">No complaints or test-run findings logged yet.</p>
+                {canEditItems && (
+                  <p className="mt-1 text-[11px]">Click <b>+ Tech Finding</b> or <b>+ Issue</b> to log customer requests or test run observations.</p>
+                )}
+              </div>
             ) : (
-              data.complaints.map((c: any) => (
-                <div key={c.id} className="flex items-start gap-2 text-xs p-2 bg-gray-50 rounded-lg border border-workshop-border-soft">
-                  <span className="font-mono font-bold text-workshop-muted">{c.sequence}.</span>
-                  <span className="text-workshop-text font-medium">{c.description}</span>
-                </div>
-              ))
+              data.complaints.map((c: any) => {
+                const techFinding = isTechFinding(c.description);
+                const displayText = cleanComplaintText(c.description);
+                return (
+                  <div
+                    key={c.id}
+                    className={`group flex items-start justify-between gap-3 text-xs p-2.5 rounded-lg border transition ${
+                      techFinding
+                        ? 'bg-indigo-50/40 border-indigo-200/80 hover:bg-indigo-50/70'
+                        : 'bg-gray-50 border-workshop-border-soft hover:bg-gray-100/70'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span className="font-mono font-bold text-workshop-muted text-[11px] mt-0.5">
+                        {c.sequence}.
+                      </span>
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {techFinding ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                              <Wrench className="w-3 h-3 text-indigo-600" /> Tech Finding
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              <User className="w-3 h-3 text-slate-500" /> Customer Voice
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-workshop-text font-medium leading-relaxed break-words">
+                          {displayText}
+                        </p>
+                      </div>
+                    </div>
+
+                    {canEditItems && (
+                      <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditComplaint(c)}
+                          className="p-1 hover:bg-white text-workshop-muted hover:text-brand rounded transition border border-transparent hover:border-gray-200 cursor-pointer"
+                          title="Edit complaint / finding"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteComplaint(c.id)}
+                          className="p-1 hover:bg-white text-workshop-muted hover:text-red-600 rounded transition border border-transparent hover:border-red-200 cursor-pointer"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
 
         {/* Inspection Checklist */}
         <div className="p-4 bg-white rounded-xl border border-workshop-border shadow-2xs space-y-3">
-          <h3 className="font-bold text-sm text-workshop-text">Intake Inspection Checklist</h3>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {data.inspections.map((insp: any) => {
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-workshop-border-soft pb-2.5">
+            <div>
+              <h3 className="font-bold text-sm text-workshop-text flex items-center gap-1.5">
+                <ClipboardCheck className="w-4 h-4 text-brand" />
+                <span>Bay Inspection Checklist</span>
+              </h3>
+              <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                {(() => {
+                  const attentionCount = data.inspections?.filter((i: any) => i.status === 'NEEDS_ATTENTION').length || 0;
+                  const totalCount = data.inspections?.length || STANDARD_CATEGORIES.length;
+                  const normalCount = Math.max(0, totalCount - attentionCount);
+                  return (
+                    <>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200">
+                        ✓ {normalCount} Normal
+                      </span>
+                      {attentionCount > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 font-bold border border-amber-300">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          {attentionCount} Attention
+                        </span>
+                      ) : (
+                        <span className="text-workshop-muted text-[10px]">All clear</span>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+            {canEditItems && (
+              <button
+                type="button"
+                onClick={handleOpenInspectionModal}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-brand hover:bg-brand-deep text-white font-semibold text-xs rounded-md shadow-2xs transition cursor-pointer"
+                title="Update multi-point vehicle inspection checklist"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                <span>Edit Checklist</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 max-h-80 overflow-y-auto pr-0.5">
+            {STANDARD_CATEGORIES.map((catName) => {
+              const insp = data.inspections?.find((i: any) => i.category === catName) || {
+                category: catName,
+                status: 'NORMAL',
+                notes: ''
+              };
               const isAttention = insp.status === 'NEEDS_ATTENTION';
               return (
                 <div
-                  key={insp.id}
-                  className={`p-2 rounded-lg border ${
-                    isAttention ? 'border-amber-300 bg-amber-50/50 text-amber-950' : 'border-gray-200 bg-gray-50 text-workshop-text'
+                  key={catName}
+                  className={`p-2.5 rounded-lg border flex flex-col justify-between transition ${
+                    isAttention
+                      ? 'border-amber-300 bg-amber-50/70 text-amber-950 shadow-2xs'
+                      : 'border-gray-200 bg-gray-50/80 text-workshop-text'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span>{insp.category}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                      isAttention ? 'bg-workshop-amber text-white font-bold' : 'text-workshop-green font-bold'
-                    }`}>
-                      {insp.status}
-                    </span>
+                  <div>
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isAttention ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                        {catName}
+                      </span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                          isAttention
+                            ? 'bg-amber-500 text-white shadow-xs'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {isAttention ? 'NEEDS ATTENTION' : 'NORMAL'}
+                      </span>
+                    </div>
+                    {insp.notes && (
+                      <div className="text-[11px] text-workshop-muted mt-1.5 p-1 bg-white/70 rounded border border-gray-200/50 leading-tight">
+                        {insp.notes}
+                      </div>
+                    )}
                   </div>
-                  {insp.notes && <div className="text-[11px] text-workshop-muted mt-1 truncate">{insp.notes}</div>}
+
+                  {isAttention && canEditItems && (
+                    <div className="mt-2 pt-2 border-t border-amber-200/60 flex items-center justify-between gap-1 text-[10px]">
+                      <span className="text-amber-800 font-medium">Bay Action:</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleAddLabourForInspection(catName, insp.notes)}
+                          className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold transition cursor-pointer"
+                          title="Add labour line for this issue"
+                        >
+                          + Labour
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddPartForInspection(catName, insp.notes)}
+                          className="px-1.5 py-0.5 rounded bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold transition cursor-pointer"
+                          title="Add replacement part for this issue"
+                        >
+                          + Part
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -2307,6 +2697,346 @@ export const JobCardDetailPage: React.FC<Props> = ({
                   className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer"
                 >
                   Save Decisions &amp; Recalculate
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Complaint / Tech Finding Modal */}
+      {showAddComplaintModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-lg w-full space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3 shrink-0">
+              <div>
+                <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-brand" /> Add Complaint / Bay Finding
+                </h3>
+                <p className="text-[11px] text-workshop-muted">
+                  Log customer reported issues or mechanic road test &amp; inspection findings
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddComplaintModal(false)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddComplaintSubmit} className="space-y-4 overflow-y-auto flex-1 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1.5">Origin / Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewComplaintType('CUSTOMER')}
+                    className={`p-2.5 rounded-lg border text-left flex items-start gap-2 transition cursor-pointer ${
+                      newComplaintType === 'CUSTOMER'
+                        ? 'border-brand bg-brand-50/50 text-brand-deep ring-1 ring-brand'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-workshop-muted'
+                    }`}
+                  >
+                    <User className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-xs text-workshop-text">Customer Voice</div>
+                      <div className="text-[10px] text-workshop-muted">Reported at counter intake</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewComplaintType('TECH')}
+                    className={`p-2.5 rounded-lg border text-left flex items-start gap-2 transition cursor-pointer ${
+                      newComplaintType === 'TECH'
+                        ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-500'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-workshop-muted'
+                    }`}
+                  >
+                    <Wrench className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" />
+                    <div>
+                      <div className="font-bold text-xs text-indigo-950">Tech Finding</div>
+                      <div className="text-[10px] text-indigo-700">Road test / Bay inspection</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">
+                  Description of Issue / Observation *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={newComplaintDesc}
+                  onChange={(e) => setNewComplaintDesc(e.target.value)}
+                  placeholder={
+                    newComplaintType === 'TECH'
+                      ? 'e.g. Lower arm ball joint loose, detected during test run over rough road...'
+                      : 'e.g. AC cooling low during afternoon idling...'
+                  }
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs resize-none focus:outline-none focus:ring-1 focus:ring-brand"
+                />
+              </div>
+
+              {/* Suggestions */}
+              <div>
+                <label className="block font-semibold text-workshop-muted uppercase tracking-wider text-[10px] mb-1.5">
+                  {newComplaintType === 'TECH' ? 'Common Technician Findings:' : 'Common Customer Complaints:'}
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                  {(newComplaintType === 'TECH' ? TECH_FINDING_SUGGESTIONS : COMMON_CUSTOMER_COMPLAINTS).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setNewComplaintDesc(item)}
+                      className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 hover:bg-brand-50 hover:text-brand border border-gray-200 transition text-left cursor-pointer"
+                    >
+                      + {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAddComplaintModal(false)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingComplaint || !newComplaintDesc.trim()}
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {savingComplaint ? 'Adding...' : 'Add to Job Card'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Complaint / Tech Finding Modal */}
+      {editingComplaint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-lg w-full space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3 shrink-0">
+              <div>
+                <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                  <Pencil className="w-4 h-4 text-brand" /> Edit Complaint #{editingComplaint.sequence}
+                </h3>
+                <p className="text-[11px] text-workshop-muted">
+                  Update complaint description or switch origin between customer voice &amp; technician finding
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingComplaint(null)}
+                className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditComplaintSubmit} className="space-y-4 overflow-y-auto flex-1 text-xs">
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1.5">Origin / Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditComplaintType('CUSTOMER')}
+                    className={`p-2.5 rounded-lg border text-left flex items-start gap-2 transition cursor-pointer ${
+                      editComplaintType === 'CUSTOMER'
+                        ? 'border-brand bg-brand-50/50 text-brand-deep ring-1 ring-brand'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-workshop-muted'
+                    }`}
+                  >
+                    <User className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-xs text-workshop-text">Customer Voice</div>
+                      <div className="text-[10px] text-workshop-muted">Reported by customer</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditComplaintType('TECH')}
+                    className={`p-2.5 rounded-lg border text-left flex items-start gap-2 transition cursor-pointer ${
+                      editComplaintType === 'TECH'
+                        ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 ring-1 ring-indigo-500'
+                        : 'border-gray-200 bg-white hover:bg-gray-50 text-workshop-muted'
+                    }`}
+                  >
+                    <Wrench className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" />
+                    <div>
+                      <div className="font-bold text-xs text-indigo-950">Tech Finding</div>
+                      <div className="text-[10px] text-indigo-700">Road test / Bay diagnosis</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-workshop-text mb-1">
+                  Description *
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editComplaintDesc}
+                  onChange={(e) => setEditComplaintDesc(e.target.value)}
+                  className="w-full px-3 py-2 border border-workshop-border rounded-lg text-xs resize-none focus:outline-none focus:ring-1 focus:ring-brand"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingComplaint(null)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingComplaint || !editComplaintDesc.trim()}
+                  className="px-4 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {updatingComplaint ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Multi-Point Inspection Checklist Modal */}
+      {showInspectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-workshop-border p-6 max-w-3xl w-full space-y-4 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-workshop-border pb-3 shrink-0">
+              <div>
+                <h3 className="font-bold text-base text-workshop-text flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-brand" /> Vehicle Bay Inspection Checklist
+                </h3>
+                <p className="text-[11px] text-workshop-muted">
+                  Record 9-point multi-system checklist results and mechanic diagnostic observations from road test
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleMarkAllInspectionsNormal}
+                  className="px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition cursor-pointer"
+                  title="Set all inspection categories to Normal"
+                >
+                  ✓ Mark All Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowInspectionModal(false)}
+                  className="p-1 text-workshop-muted hover:bg-gray-100 rounded-lg cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveInspectionsSubmit} className="space-y-3 overflow-y-auto flex-1 pr-1 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {STANDARD_CATEGORIES.map((catName) => {
+                  const current = inspectionDraft[catName] || { status: 'NORMAL', notes: '' };
+                  const isAttention = current.status === 'NEEDS_ATTENTION';
+                  return (
+                    <div
+                      key={catName}
+                      className={`p-3 rounded-xl border transition flex flex-col justify-between gap-2.5 ${
+                        isAttention
+                          ? 'border-amber-400 bg-amber-50/50 shadow-2xs'
+                          : 'border-gray-200 bg-gray-50/60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-sm text-workshop-text flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-full ${isAttention ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          {catName}
+                        </span>
+                        <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-gray-200 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInspectionDraft((prev) => ({
+                                ...prev,
+                                [catName]: { ...(prev[catName] || { notes: '' }), status: 'NORMAL' }
+                              }));
+                            }}
+                            className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                              !isAttention
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                            }`}
+                          >
+                            ✓ Normal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInspectionDraft((prev) => ({
+                                ...prev,
+                                [catName]: { ...(prev[catName] || { notes: '' }), status: 'NEEDS_ATTENTION' }
+                              }));
+                            }}
+                            className={`px-2 py-1 rounded text-[11px] font-bold transition cursor-pointer ${
+                              isAttention
+                                ? 'bg-amber-500 text-white shadow-xs'
+                                : 'text-gray-500 hover:text-amber-800 hover:bg-amber-50'
+                            }`}
+                          >
+                            ⚠️ Needs Attention
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <input
+                          type="text"
+                          value={current.notes || ''}
+                          onChange={(e) => handleDraftInspectionNotes(catName, e.target.value)}
+                          placeholder={
+                            isAttention
+                              ? `Details on ${catName} defect, wear %, diagnostic reading, or parts needed...`
+                              : `Notes on ${catName} condition (optional)...`
+                          }
+                          className={`w-full px-2.5 py-1.5 rounded-lg border text-xs bg-white focus:outline-none focus:ring-1 ${
+                            isAttention
+                              ? 'border-amber-300 focus:ring-amber-500'
+                              : 'border-gray-300 focus:ring-brand'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowInspectionModal(false)}
+                  className="px-4 py-2 border border-workshop-border rounded-lg text-xs font-semibold hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingInspections}
+                  className="px-5 py-2 bg-brand text-white rounded-lg text-xs font-bold hover:bg-brand-deep shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {savingInspections ? 'Saving...' : 'Save Inspection Report'}
                 </button>
               </div>
             </form>
