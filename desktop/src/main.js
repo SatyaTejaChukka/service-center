@@ -191,15 +191,57 @@ async function bootApplication() {
     minHeight: 700,
     show: false,
     title: 'Pushpa Raj Automotive Services - Workshop Suite',
+    icon: path.join(__dirname, '../assets/icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: false,
       contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false, // Prevents CORS & Private Network Access restrictions for local file:// to http://127.0.0.1
     },
   });
 
   // Remove default standard browser menu for clean desktop app appearance
   Menu.setApplicationMenu(null);
+
+  let isWindowShown = false;
+  const showMainWindow = () => {
+    if (isWindowShown) return;
+    isWindowShown = true;
+    logMessage('[Desktop] Showing main window and dismissing splash screen.');
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.destroy();
+      splashWindow = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  };
+
+  // Register transition handlers BEFORE loading content
+  mainWindow.once('ready-to-show', () => {
+    logMessage('[Desktop] Main window ready-to-show event fired.');
+    showMainWindow();
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    logMessage('[Desktop] Main window did-finish-load event fired.');
+    // Safety fallback: if ready-to-show is delayed, show after brief paint interval
+    setTimeout(showMainWindow, 200);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    logMessage(`[Desktop Renderer Error] did-fail-load: code ${errorCode} - ${errorDescription} on ${validatedURL}`);
+  });
+
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    logMessage(`[Renderer Console] ${message} (line ${line} in ${sourceId})`);
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 
   // F. Load Frontend
   if (isDev && process.env.VITE_DEV_SERVER === 'true') {
@@ -214,20 +256,13 @@ async function bootApplication() {
     await mainWindow.loadFile(distPath);
   }
 
-  // G. Smooth transition from Splash to Main Window
-  mainWindow.once('ready-to-show', () => {
-    logMessage('[Desktop] Main window ready to show. Dismissing splash screen.');
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.destroy();
-      splashWindow = null;
+  // Safety fallback timer in case all events were missed
+  setTimeout(() => {
+    if (!isWindowShown) {
+      logMessage('[Desktop] Fallback timer triggered to show main window.');
+      showMainWindow();
     }
-    mainWindow.show();
-    mainWindow.focus();
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  }, 1500);
 }
 
 // 4. Synchronous IPC Handlers for Preload Bridge
