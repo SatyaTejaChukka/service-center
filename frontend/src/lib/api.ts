@@ -49,7 +49,9 @@ export async function apiRequest<T = any>(
     } catch {
       errorDetail = await response.text();
     }
-    throw new Error(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+    const err: any = new Error(typeof errorDetail === 'string' ? errorDetail : JSON.stringify(errorDetail));
+    err.status = response.status;
+    throw err;
   }
 
   // If response is PDF binary or empty

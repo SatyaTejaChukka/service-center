@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, LogOut, Shield, Wrench, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDesktopModal } from '../../context/DesktopModalContext';
 
 interface Props {
   onOpenSearch: () => void;
@@ -9,7 +10,23 @@ interface Props {
 
 export const Header: React.FC<Props> = ({ onOpenSearch, onToggleMobileMenu }) => {
   const { user, logout } = useAuth();
+  const { confirm } = useDesktopModal();
   const [timeStr, setTimeStr] = useState('');
+
+  const handleLogoutClick = async () => {
+    const ok = await confirm(
+      'Are you sure you want to sign out? Your session is kept permanently saved on this computer so you never have to sign in repeatedly. You will need your password to sign back in.',
+      {
+        title: 'Confirm Sign Out',
+        confirmText: 'Sign Out',
+        cancelText: 'Stay Signed In',
+        variant: 'danger',
+      }
+    );
+    if (ok) {
+      logout();
+    }
+  };
 
   useEffect(() => {
     const update = () => {
@@ -104,8 +121,8 @@ export const Header: React.FC<Props> = ({ onOpenSearch, onToggleMobileMenu }) =>
             </div>
 
             <button
-              onClick={logout}
-              title="Logout"
+              onClick={handleLogoutClick}
+              title="Sign Out"
               className="p-2 text-workshop-muted hover:text-workshop-red hover:bg-red-50 rounded-lg transition"
             >
               <LogOut className="w-4 h-4" />

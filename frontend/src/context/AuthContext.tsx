@@ -35,42 +35,91 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [workshop, setWorkshop] = useState<WorkshopProfile | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('pr_auth_token'));
-  const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [token, setToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('pr_auth_token');
+    } catch {
+      return null;
+    }
+  });
+
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('pr_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [workshop, setWorkshop] = useState<WorkshopProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('pr_auth_workshop');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(() => {
+    try {
+      const saved = localStorage.getItem('pr_setup_complete');
+      if (saved === 'true') return true;
+      if (saved === 'false') return false;
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  // If token and user are already cached, do not block the UI with a full-screen loading spinner
+  const [loading, setLoading] = useState<boolean>(() => !localStorage.getItem('pr_auth_token'));
 
   const fetchWorkshop = async () => {
     try {
       const wp = await apiRequest<WorkshopProfile>('/settings/business');
       setWorkshop(wp);
+      try {
+        localStorage.setItem('pr_auth_workshop', JSON.stringify(wp));
+      } catch {}
     } catch {
-      // ignore if unauthenticated or not ready
+      // Keep cached workshop profile if offline or initializing
     }
   };
 
   const checkSetupAndUser = async () => {
     try {
-      setLoading(true);
       const setupRes = await apiRequest<{ is_setup_complete: boolean }>('/auth/setup-status');
       setIsSetupComplete(setupRes.is_setup_complete);
+      try {
+        localStorage.setItem('pr_setup_complete', String(setupRes.is_setup_complete));
+      } catch {}
 
-      if (token) {
+      const currentToken = localStorage.getItem('pr_auth_token');
+      if (currentToken) {
         try {
           const me = await apiRequest<UserProfile>('/auth/me');
           setUser(me);
+          try {
+            localStorage.setItem('pr_auth_user', JSON.stringify(me));
+          } catch {}
           await fetchWorkshop();
-        } catch {
-          // Token expired or invalid
-          localStorage.removeItem('pr_auth_token');
-          setToken(null);
-          setUser(null);
-          setWorkshop(null);
+        } catch (err: any) {
+          // CRITICAL: Only log out if the backend explicitly rejected credentials with 401 Unauthorized.
+          // Transient errors, offline states, or server booting must NOT log the user out!
+          if (err && err.status === 401) {
+            localStorage.removeItem('pr_auth_token');
+            localStorage.removeItem('pr_auth_user');
+            localStorage.removeItem('pr_auth_workshop');
+            setToken(null);
+            setUser(null);
+            setWorkshop(null);
+          }
         }
       }
     } catch (err) {
-      console.error('Failed to verify status:', err);
+      // Backend may be starting or offline; keep cached session active
+      console.warn('Background setup check note:', err);
     } finally {
       setLoading(false);
     }
@@ -81,7 +130,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   const login = (newToken: string, newUser: UserProfile) => {
-    localStorage.setItem('pr_auth_token', newToken);
+    try {
+      localStorage.setItem('pr_auth_token', newToken);
+      localStorage.setItem('pr_auth_user', JSON.stringify(newUser));
+      localStorage.setItem('pr_setup_complete', 'true');
+    } catch {}
     setToken(newToken);
     setUser(newUser);
     setIsSetupComplete(true);
@@ -89,7 +142,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem('pr_auth_token');
+    try {
+      localStorage.removeItem('pr_auth_token');
+      localStorage.removeItem('pr_auth_user');
+      localStorage.removeItem('pr_auth_workshop');
+    } catch {}
     setToken(null);
     setUser(null);
     setWorkshop(null);

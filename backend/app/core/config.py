@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = _get_or_create_secret_key(_DEFAULT_BASE_DATA_DIR)
     SHUTDOWN_TOKEN: str = os.getenv("PR_SHUTDOWN_TOKEN", "")
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 # 24 hours session
+    # Permanent offline desktop session: tokens remain valid for 50 years unless explicitly logged out
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 365 * 50
     
     # Base application data directory
     # Defaults to local ./data or %LOCALAPPDATA%/PushpaRajAutomotive
