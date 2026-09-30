@@ -25,9 +25,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5175",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "tauri://localhost"
+        "tauri://localhost",
+        "null",
+        "file://",
+        "file://*"
     ]
-    CORS_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$"
+    CORS_ORIGIN_REGEX: str = r"^(https?://(localhost|127\.0\.0\.1)(:[0-9]+)?|file://.*|null)$"
 
     @property
     def data_dir(self) -> Path:

@@ -1,0 +1,18 @@
+{
+  "name": "pushpa-raj-workshop-desktop",
+  "version": "1.0.0",
+  "description": "Pushpa Raj Automotive Services - Standalone Desktop System",
+  "main": "src/main.js",
+  "author": "Pushpa Raj Automotive Services",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

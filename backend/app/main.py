@@ -58,6 +58,17 @@ async def lifespan(app: FastAPI):
     seed_initial_catalogs()
     logger.info("Database initialized with WAL mode and catalogs verified.")
     yield
+    # Graceful shutdown handler: Flush SQLite WAL checkpoint before process termination
+    try:
+        from sqlalchemy import text
+        logger.info("Executing SQLite WAL Checkpoint (TRUNCATE) before shutdown...")
+        db = SessionLocal()
+        db.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+        db.commit()
+        db.close()
+        logger.info("SQLite WAL Checkpoint completed successfully.")
+    except Exception as e:
+        logger.error(f"WAL Checkpoint error on shutdown: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -83,3 +94,13 @@ def home():
 @app.get("/health")
 def healthcheck():
     return {"status": "ok", "app": "Service Center Management System", "offline_ready": True}
+
+@app.post(f"{settings.API_V1_STR}/system/shutdown")
+def shutdown_system():
+    """Allows desktop host process to signal clean server termination."""
+    import os, threading, time
+    def _delayed_exit():
+        time.sleep(0.3)
+        os._exit(0)
+    threading.Thread(target=_delayed_exit, daemon=True).start()
+    return {"message": "Server shutting down cleanly"}
