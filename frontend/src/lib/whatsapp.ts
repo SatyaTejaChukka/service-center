@@ -242,6 +242,8 @@ Please let us know once paid so we can update your receipt records. Thank you!
 ${wsPhone ? `📞 Accounts Contact: ${wsPhone}` : ''}`;
 }
 
+import { desktopDialog } from '../context/DesktopModalContext';
+
 /**
  * Direct WhatsApp opener: opens WhatsApp Web on Desktop or WhatsApp App on Mobile.
  * NOTE: Meta's wa.me URL shortener (https://wa.me/...) has a known server-side 302 redirect bug
@@ -252,7 +254,10 @@ ${wsPhone ? `📞 Accounts Contact: ${wsPhone}` : ''}`;
 export function openWhatsApp(phone: string | undefined | null, text: string, preferWeb: boolean = true): void {
   const cleanPhone = normalizeWhatsAppPhone(phone);
   if (!cleanPhone) {
-    alert('No valid phone number provided for WhatsApp communication.');
+    desktopDialog.alert('No valid phone number provided for WhatsApp communication.', {
+      type: 'warning',
+      title: 'WhatsApp Error',
+    });
     return;
   }
   const encodedText = encodeURIComponent(text);

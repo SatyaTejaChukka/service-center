@@ -3,9 +3,11 @@ import { Package, Wrench, Plus, Trash2, Pencil, X, Sparkles, Percent } from 'luc
 import { apiRequest } from '../lib/api';
 import { formatINR } from '../lib/formatters';
 import { useAuth } from '../context/AuthContext';
+import { useDesktopModal } from '../context/DesktopModalContext';
 
 export const CatalogsPage: React.FC = () => {
   const { user } = useAuth();
+  const { alert, confirm, toast } = useDesktopModal();
   const [activeTab, setActiveTab] = useState<'LABOUR' | 'PARTS'>('LABOUR');
   const [labour, setLabour] = useState<any[]>([]);
   const [parts, setParts] = useState<any[]>([]);
@@ -94,8 +96,9 @@ export const CatalogsPage: React.FC = () => {
       });
       setEditingLabour(null);
       await fetchCatalogs();
+      toast('Labour item updated successfully', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update labour item');
+      alert(err.message || 'Failed to update labour item', { type: 'error' });
     } finally {
       setEditLabourSaving(false);
     }
@@ -132,8 +135,9 @@ export const CatalogsPage: React.FC = () => {
       });
       setEditingPart(null);
       await fetchCatalogs();
+      toast('Part item updated successfully', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update part item');
+      alert(err.message || 'Failed to update part item', { type: 'error' });
     } finally {
       setEditPartSaving(false);
     }
@@ -157,8 +161,9 @@ export const CatalogsPage: React.FC = () => {
       setNewLabourRate('');
       setNewLabourCost('');
       fetchCatalogs();
+      toast('Labour item added to catalog', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to add labour item');
+      alert(err.message || 'Failed to add labour item', { type: 'error' });
     }
   };
 
@@ -184,28 +189,41 @@ export const CatalogsPage: React.FC = () => {
       setNewPartPrice('');
       setNewPartCost('');
       fetchCatalogs();
+      toast('Part item added to catalog', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to add part item');
+      alert(err.message || 'Failed to add part item', { type: 'error' });
     }
   };
 
   const handleDeleteLabour = async (id: number) => {
-    if (!window.confirm('Deactivate this labour item?')) return;
+    const confirmed = await confirm('Deactivate this labour item from active recommendations?', {
+      title: 'Deactivate Labour Service',
+      confirmText: 'Deactivate',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await apiRequest(`/catalogs/labour/${id}`, { method: 'DELETE' });
       fetchCatalogs();
+      toast('Labour item deactivated', 'info');
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Failed to deactivate item', { type: 'error' });
     }
   };
 
   const handleDeletePart = async (id: number) => {
-    if (!window.confirm('Deactivate this part item?')) return;
+    const confirmed = await confirm('Deactivate this part item from active recommendations?', {
+      title: 'Deactivate Part Item',
+      confirmText: 'Deactivate',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await apiRequest(`/catalogs/parts/${id}`, { method: 'DELETE' });
       fetchCatalogs();
+      toast('Part item deactivated', 'info');
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Failed to deactivate item', { type: 'error' });
     }
   };
 

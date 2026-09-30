@@ -14,9 +14,11 @@ import {
 import { apiRequest } from '../lib/api';
 import { formatINR } from '../lib/formatters';
 import { useAuth } from '../context/AuthContext';
+import { useDesktopModal } from '../context/DesktopModalContext';
 
 export const SettingsPage: React.FC = () => {
   const { user } = useAuth();
+  const { alert, confirm, toast } = useDesktopModal();
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'BACKUP' | 'USERS' | 'AUDIT'>('PROFILE');
   
   // Profile state
@@ -104,9 +106,10 @@ export const SettingsPage: React.FC = () => {
         body: JSON.stringify(profile),
       });
       setProfileSaved(true);
+      toast('Workshop profile saved', 'success');
       setTimeout(() => setProfileSaved(false), 3000);
     } catch (err: any) {
-      alert(err.message || 'Failed to update profile');
+      alert(err.message || 'Failed to update profile', { type: 'error' });
     }
   };
 
@@ -117,15 +120,21 @@ export const SettingsPage: React.FC = () => {
       const res = await apiRequest('/backup/now', { method: 'POST' });
       setBackupSuccess(res);
       fetchBackupStatus();
+      toast('Safety backup created successfully', 'success');
     } catch (err: any) {
-      alert(err.message || 'Backup failed');
+      alert(err.message || 'Backup failed', { type: 'error' });
     } finally {
       setBackupLoading(false);
     }
   };
 
   const handleRestore = async (folderPath: string) => {
-    if (!window.confirm('WARNING: Restoring will overwrite the current database with this snapshot. A safety backup of the current database will be saved automatically. Do you want to proceed?')) {
+    const proceed = await confirm('WARNING: Restoring will overwrite the current database with this snapshot. A safety backup of the current database will be saved automatically. Do you want to proceed?', {
+      title: 'Restore Database Snapshot',
+      confirmText: 'Proceed with Restore',
+      variant: 'danger',
+    });
+    if (!proceed) {
       return;
     }
     try {
@@ -133,10 +142,10 @@ export const SettingsPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ backup_folder_path: folderPath }),
       });
-      alert(res.message);
+      await alert(res.message, { title: 'Restore Complete', type: 'success' });
       window.location.reload();
     } catch (err: any) {
-      alert(err.message || 'Restore failed');
+      alert(err.message || 'Restore failed', { type: 'error' });
     }
   };
 
@@ -157,8 +166,9 @@ export const SettingsPage: React.FC = () => {
       setNewFullName('');
       setNewRole('STAFF');
       fetchUsers();
+      toast('Staff user account created', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to create user');
+      alert(err.message || 'Failed to create user', { type: 'error' });
     }
   };
 
@@ -166,8 +176,9 @@ export const SettingsPage: React.FC = () => {
     try {
       await apiRequest(`/users/${uid}/toggle-status`, { method: 'PATCH' });
       fetchUsers();
+      toast('User status updated', 'info');
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Failed to update user status', { type: 'error' });
     }
   };
 
