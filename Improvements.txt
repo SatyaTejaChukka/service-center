@@ -1,0 +1,54 @@
+1. Financial & Chartered Accountant (CA) Enhancements (Highest Immediate Value)
+Feature	Description	Real-World Benefit
+
+
+1-Click Excel / CSV Export (Sales Register & Day Book)	Add an "Export for CA (.xlsx / .csv)" button directly on the Revenue Calendar & Reports page.	CAs do not manually copy numbers; they import Excel/CSV directly into Tally Prime, Zoho Books, or Marg ERP for filing tax and balancing books.
+Comprehensive GST Engine (CGST, SGST, IGST)	The schema already has tax_total, but adding configurable GST percentages (e.g., 18% on Labour via SAC codes, 18%/28% on Parts via HSN codes) with B2B Customer GSTIN validation.	Compliant tax invoices with HSN/SAC summaries, enabling auto-generated GSTR-1 Monthly Reports.
+Gross Margin & Profitability Tracking	Add purchase_cost to the Parts catalog and cost_per_job for labour.	Workshop owners can see not just Total Revenue, but Gross Profit & Margin % per invoice and per month (Profit = Invoiced Revenue - Parts Purchase Cost - Consumables).
+
+
+2. Live Inventory & Spare Parts Control
+Currently, the Parts Catalog stores names and prices, but doesn't track on-hand stock quantities:
+Stock Quantity on Hand (QOH) & Auto-Deduction:
+Track current quantity in stock for each item in the Parts Catalog.
+Automatically deduct stock when a job card item is marked as USED or invoice finalized.
+Low Stock & Reorder Alerts on Dashboard:
+Set a minimum reorder threshold (e.g., alert when 5W-30 Engine Oil falls below 10 Liters).
+Add a "Low Stock Warning" widget to the dashboard so fast-moving consumables never run out mid-service.
+Supplier / Vendor Purchase Inward:
+Record vendor bills when buying spare parts to track unpaid supplier dues and purchase history.
+
+
+3. Customer Retention & WhatsApp Follow-Ups
+The application already has 1-click WhatsApp messaging for payment reminders and job card status. You can expand this into a revenue generation engine:
+
+Automated Service Due & Periodic Maintenance Reminders:
+Cars typically require service every 6 months or 5,000–10,000 km.
+A dedicated section on the dashboard: "Vehicles Due for Service This Week" with a 1-click WhatsApp button:
+"Hello [Customer Name], your [Vehicle Model] was last serviced on [Date]. It is now due for periodic maintenance. Book your slot today!"
+
+Vehicle Inspection Report Card (Digital Health Check):
+The job card inspection collects Brakes, Tyres, Battery, AC, and Fluids data.
+Generate a downloadable/WhatsApp-shareable Green-Yellow-Red Health Card for the vehicle to build customer trust and encourage preventive repairs.
+Insurance & PUC Expiry Tracker:
+Track Pollution Check (PUC) and Motor Insurance renewal dates with automated WhatsApp reminder nudges.
+
+
+
+4. Workshop Floor Operations & Productivity
+Technician & Mechanic Incentive Tracker:
+Assign technicians to specific labour operations on the job card.
+Compute monthly technician efficiency and commission/incentive payout based on labour billed.
+Vehicle Inward Photos (Dent & Scratch Register):
+Allow attaching or capturing before/after photos of fuel gauge, existing scratches, and dent marks during vehicle intake to eliminate customer handover disputes.
+Digital Customer Signature on Estimate Approval:
+Allow customers to sign estimate approval directly on a phone or tablet screen when handing over the keys.
+
+
+
+5. Data Reliability & Offline Resilience
+Automated Scheduled Backups:
+Currently, database backups are created manually via Settings.
+Add an automated daily backup daemon that creates timestamped SQLite backups on disk or copies to an external USB/local network drive upon closing.
+Keyboard Shortcuts (Power-User Mode):
+Add hotkeys for quick workshop actions: N for New Job Card, F for Find Vehicle, I for New Invoice, P for Print.

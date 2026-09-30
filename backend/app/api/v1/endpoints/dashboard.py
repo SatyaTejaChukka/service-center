@@ -20,9 +20,9 @@ def get_dashboard_summary(
     # 1. Today's Jobs
     todays_jobs_count = db.query(JobCard).filter(JobCard.date == today).count()
 
-    # 2. In Service (INSPECTION, WAITING_FOR_APPROVAL, APPROVED, IN_PROGRESS)
+    # 2. In Service (INSPECTION, WAITING_FOR_APPROVAL, APPROVED, IN_PROGRESS, REOPENED)
     in_service_count = db.query(JobCard).filter(
-        JobCard.status.in_(["INSPECTION", "WAITING_FOR_APPROVAL", "APPROVED", "IN_PROGRESS"])
+        JobCard.status.in_(["INSPECTION", "WAITING_FOR_APPROVAL", "APPROVED", "IN_PROGRESS", "REOPENED"])
     ).count()
 
     # 3. Ready for Delivery

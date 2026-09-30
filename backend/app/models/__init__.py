@@ -76,7 +76,7 @@ class JobCard(Base, TimestampMixin):
     time_in = Column(DateTime, default=datetime.utcnow, nullable=False)
     time_out = Column(DateTime, nullable=True)
     status = Column(String(30), default="RECEIVED", nullable=False, index=True) 
-    # RECEIVED, INSPECTION, WAITING_FOR_APPROVAL, APPROVED, IN_PROGRESS, READY_FOR_DELIVERY, COMPLETED, CANCELLED
+    # RECEIVED, INSPECTION, WAITING_FOR_APPROVAL, APPROVED, IN_PROGRESS, READY_FOR_DELIVERY, COMPLETED, CANCELLED, REOPENED
     odometer = Column(Integer, default=0, nullable=False)
     fuel_level = Column(String(20), nullable=True)
     assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)

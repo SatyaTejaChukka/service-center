@@ -214,3 +214,73 @@ def test_full_workshop_lifecycle():
         assert res_backup.status_code == 200
         assert res_backup.json()["status"] == "success"
         assert res_backup.json()["total_files"] >= 1
+
+def test_job_card_cancellation_and_reopen():
+    """Tests the workflow where a job card is cancelled when customer takes vehicle without service,
+    and then re-opened when customer reconsiders with an explanatory note."""
+    with TestClient(app) as client:
+        # Setup admin
+        setup_data = {
+            "admin_username": "reopentester",
+            "admin_password": "securepassword123",
+            "admin_full_name": "Test Manager",
+            "business_name": "Reopen Workshop",
+            "business_address": "Test Street",
+            "business_phone": "+91 99999 88888",
+            "business_email": "test@reopen.com",
+            "business_gstin": "37AAAAA0000A1Z5",
+            "business_upi_id": "test@upi"
+        }
+        res = client.post("/api/v1/auth/setup", json=setup_data)
+        token = res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Create customer & vehicle
+        c_res = client.post("/api/v1/customers", json={"name": "Reopen Customer", "phone": "9123456780"}, headers=headers)
+        cust_id = c_res.json()["id"]
+
+        v_res = client.post("/api/v1/vehicles", json={"customer_id": cust_id, "registration_number": "AP 09 RE 9999", "make": "Hyundai", "model": "i20"}, headers=headers)
+        veh_id = v_res.json()["id"]
+
+        # Create job card
+        jc_res = client.post("/api/v1/job-cards", json={
+            "customer_id": cust_id,
+            "vehicle_id": veh_id,
+            "odometer": 35000,
+            "notes": "Customer dropped vehicle for inspection"
+        }, headers=headers)
+        assert jc_res.status_code == 200
+        jc_id = jc_res.json()["id"]
+
+        # Customer takes vehicle without service -> cancel job card
+        cancel_res = client.post(f"/api/v1/job-cards/{jc_id}/status", json={
+            "status": "CANCELLED",
+            "cancelled_reason": "Customer had an emergency, took vehicle without servicing"
+        }, headers=headers)
+        assert cancel_res.status_code == 200
+
+        # Verify job card is CANCELLED
+        jc_detail = client.get(f"/api/v1/job-cards/{jc_id}", headers=headers).json()
+        assert jc_detail["status"] == "CANCELLED"
+        assert jc_detail["cancelled_reason"] == "Customer had an emergency, took vehicle without servicing"
+
+        # Customer reconsiders and brings vehicle back -> ReOpen status update with note
+        reopen_res = client.post(f"/api/v1/job-cards/{jc_id}/status", json={
+            "status": "REOPENED",
+            "note": "Customer reconsidered, returned vehicle next morning to proceed with full servicing"
+        }, headers=headers)
+        assert reopen_res.status_code == 200
+        assert "REOPENED" in reopen_res.json()["message"]
+
+        # Verify job card is now REOPENED and note is recorded
+        jc_reopened = client.get(f"/api/v1/job-cards/{jc_id}", headers=headers).json()
+        assert jc_reopened["status"] == "REOPENED"
+        assert jc_reopened["cancelled_reason"] is None
+        assert "Customer reconsidered, returned vehicle" in jc_reopened["notes"]
+
+        # Verify status history audit trail
+        history_entries = jc_reopened["status_history"]
+        reopen_entry = [h for h in history_entries if h["to_status"] == "REOPENED"][0]
+        assert reopen_entry["from_status"] == "CANCELLED"
+        assert "Customer reconsidered" in reopen_entry["note"]
+

@@ -73,6 +73,8 @@ export const JobCardsPage: React.FC<Props> = ({ onNavigate, onNewJobCard }) => {
         return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">Completed</span>;
       case 'CANCELLED':
         return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-workshop-red-bg text-workshop-red">Cancelled</span>;
+      case 'REOPENED':
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">Reopened</span>;
       default:
         return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-brand">{status}</span>;
     }
@@ -115,6 +117,7 @@ export const JobCardsPage: React.FC<Props> = ({ onNavigate, onNewJobCard }) => {
               { id: 'READY_FOR_DELIVERY', label: 'Ready' },
               { id: 'COMPLETED', label: 'Completed' },
               { id: 'CANCELLED', label: 'Cancelled' },
+              { id: 'REOPENED', label: 'Reopened' },
             ].map((tab) => (
               <button
                 key={tab.id}

@@ -32,7 +32,8 @@ STANDARD_INSPECTION_CATEGORIES = [
 
 VALID_JOB_CARD_STATUSES = {
     "RECEIVED", "INSPECTION", "WAITING_FOR_APPROVAL", "APPROVED",
-    "IN_PROGRESS", "READY_FOR_DELIVERY", "COMPLETED", "CANCELLED"
+    "IN_PROGRESS", "READY_FOR_DELIVERY", "COMPLETED", "CANCELLED",
+    "REOPENED", "REOPEN"
 }
 
 def recalculate_job_card_invoice(db: Session, job_card: JobCard) -> Invoice:
@@ -390,6 +391,8 @@ def update_job_card_status(
 
     old_status = jc.status
     new_status = req.status.strip().upper()
+    if new_status == "REOPEN":
+        new_status = "REOPENED"
 
     if new_status not in VALID_JOB_CARD_STATUSES:
         raise HTTPException(
@@ -415,13 +418,23 @@ def update_job_card_status(
             raise HTTPException(status_code=400, detail="Cannot cancel job card with a finalised invoice. The invoice must be voided first.")
         jc.cancelled_reason = req.cancelled_reason
 
+    # Rule: Reopening a job card (customer reconsidered and returned vehicle)
+    if new_status == "REOPENED":
+        reopen_note = req.note or "Customer reconsidered and reopened job card"
+        if jc.notes:
+            jc.notes = f"{jc.notes} | [Reopened: {reopen_note}]"
+        else:
+            jc.notes = f"[Reopened: {reopen_note}]"
+        jc.cancelled_reason = None
+
     jc.status = new_status
+    hist_note = req.note or (req.cancelled_reason if new_status == "CANCELLED" else ("Reopened job card" if new_status == "REOPENED" else None))
     hist = JobCardStatusHistory(
         job_card_id=jc.id,
         from_status=old_status,
         to_status=new_status,
         changed_by=current_user.id,
-        note=req.note or req.cancelled_reason
+        note=hist_note
     )
     db.add(hist)
     record_audit(db, current_user.id, "JOB_CARD_STATUS", "job_card", str(jc.id), {"status": old_status}, {"status": new_status})

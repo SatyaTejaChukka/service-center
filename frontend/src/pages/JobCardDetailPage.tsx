@@ -22,7 +22,9 @@ import {
   UserCheck,
   RefreshCw,
   Pencil,
-  ClipboardCheck
+  ClipboardCheck,
+  RotateCcw,
+  AlertCircle
 } from 'lucide-react';
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
@@ -92,6 +94,13 @@ export const STATUS_OPTIONS = [
     desc: 'Service cancelled by owner',
     dotClass: 'bg-rose-500',
     buttonClass: 'bg-rose-50 hover:bg-rose-100 border-rose-300 text-rose-900',
+  },
+  {
+    value: 'REOPENED',
+    label: 'Reopened',
+    desc: 'Customer reconsidered & job resumed',
+    dotClass: 'bg-teal-500',
+    buttonClass: 'bg-teal-50 hover:bg-teal-100 border-teal-300 text-teal-900',
   },
 ];
 
@@ -405,9 +414,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
       return;
     }
 
-    if (targetStatus === 'CANCELLED') {
+    if (targetStatus === 'CANCELLED' || targetStatus === 'REOPENED') {
       setShowStatusDropdown(false);
-      setNewStatus('CANCELLED');
+      setNewStatus(targetStatus);
+      setStatusNote('');
       setShowStatusModal(true);
       return;
     }
@@ -439,11 +449,15 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
   const handleUpdateStatus = async () => {
     try {
+      const finalNote = newStatus === 'REOPENED' && !statusNote.trim()
+        ? 'Customer reconsidered and reopened job card'
+        : (statusNote || undefined);
+
       await apiRequest(`/job-cards/${jobCardId}/status`, {
         method: 'POST',
         body: JSON.stringify({
           status: newStatus,
-          note: statusNote || undefined,
+          note: finalNote,
           cancelled_reason: newStatus === 'CANCELLED' ? cancelReason : undefined,
         }),
       });
@@ -892,6 +906,8 @@ export const JobCardDetailPage: React.FC<Props> = ({
                 className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                   data.status === 'COMPLETED'
                     ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    : data.status === 'REOPENED'
+                    ? 'bg-teal-100 text-teal-800 border-teal-200'
                     : data.status === 'CANCELLED'
                     ? 'bg-rose-100 text-rose-800 border-rose-200'
                     : data.status === 'WAITING_FOR_APPROVAL'
@@ -1210,6 +1226,50 @@ export const JobCardDetailPage: React.FC<Props> = ({
         </div>
 
       </div>
+
+      {/* Cancelled Banner with Direct Re-Open Button */}
+      {isCancelled && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-rose-900 shadow-2xs">
+          <div className="space-y-1">
+            <div className="font-bold text-sm flex items-center gap-1.5 text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600" />
+              Job Card is Cancelled
+            </div>
+            {data.cancelled_reason && (
+              <div className="text-rose-700">
+                <span className="font-semibold">Cancellation Reason:</span> {data.cancelled_reason}
+              </div>
+            )}
+            <div className="text-[11px] text-rose-600">
+              Customer took vehicle without service. If they reconsidered and brought the vehicle back, you can re-open this job card with a note.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setNewStatus('REOPENED');
+              setStatusNote('');
+              setShowStatusModal(true);
+            }}
+            className="px-4 py-2.5 bg-brand hover:bg-brand-deep text-white font-bold rounded-lg shadow-sm transition shrink-0 cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Re-Open Job Card
+          </button>
+        </div>
+      )}
+
+      {/* Reopened Banner */}
+      {data.status === 'REOPENED' && (
+        <div className="p-3.5 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between gap-3 text-xs text-teal-900 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <RotateCcw className="w-4 h-4 text-teal-600 shrink-0" />
+            <div>
+              <span className="font-bold text-teal-800">Job Card Reopened:</span> This job card was previously cancelled and has been re-opened upon customer reconsideration. You can now add services, allocate parts, and proceed with work.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Intake Notes, Delivery Time, and Assigned Technician */}
       {(data.notes || data.promised_at || data.assigned_to_name) && (
@@ -1880,6 +1940,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
                 <option value="READY_FOR_DELIVERY">READY_FOR_DELIVERY</option>
                 <option value="COMPLETED">COMPLETED (Requires Finalised Invoice)</option>
                 <option value="CANCELLED">CANCELLED (Requires Reason)</option>
+                <option value="REOPENED">REOPENED / ReOpen (Customer Reconsidered)</option>
               </select>
             </div>
 
@@ -1897,13 +1958,24 @@ export const JobCardDetailPage: React.FC<Props> = ({
               </div>
             )}
 
+            {newStatus === 'REOPENED' && (
+              <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-800 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-teal-900">
+                  <RotateCcw className="w-3.5 h-3.5 text-teal-600" /> Reopening Cancelled Job Card
+                </div>
+                <div>Please write a note below describing why the job card is being reopened (e.g. customer reconsidered and returned vehicle for service).</div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-semibold text-workshop-text mb-1">Note (Optional)</label>
+              <label className="block text-xs font-semibold text-workshop-text mb-1">
+                {newStatus === 'REOPENED' ? 'Reopen Note / Reason *' : 'Note (Optional)'}
+              </label>
               <input
                 type="text"
                 value={statusNote}
                 onChange={(e) => setStatusNote(e.target.value)}
-                placeholder="Optional transition note..."
+                placeholder={newStatus === 'REOPENED' ? 'e.g. Customer returned vehicle, agreed to full service' : 'Optional transition note...'}
                 className="w-full px-3 py-2 border border-workshop-border rounded-lg text-sm"
               />
             </div>
