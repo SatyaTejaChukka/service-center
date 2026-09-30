@@ -29,6 +29,7 @@ import {
 import { apiRequest, getPdfUrl } from '../lib/api';
 import { formatINR, formatDate } from '../lib/formatters';
 import { useAuth } from '../context/AuthContext';
+import { useDesktopModal } from '../context/DesktopModalContext';
 import { WhatsAppPreviewModal } from '../components/common/WhatsAppPreviewModal';
 import {
   buildEstimateApprovalMessage,
@@ -174,6 +175,7 @@ export const JobCardDetailPage: React.FC<Props> = ({
   backLabel,
 }) => {
   const { user, workshop } = useAuth();
+  const { alert, confirm, toast } = useDesktopModal();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -424,7 +426,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
 
     if (targetStatus === 'COMPLETED') {
       if (!data.invoice || data.invoice.status !== 'FINALIZED') {
-        alert('Cannot mark as COMPLETED without a finalised invoice. Please finalize the invoice first.');
+        alert('Cannot mark as COMPLETED without a finalised invoice. Please finalize the invoice first.', {
+          title: 'Finalised Invoice Required',
+          type: 'warning',
+        });
         setShowStatusDropdown(false);
         return;
       }
@@ -440,8 +445,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setShowStatusDropdown(false);
       await fetchDetail();
+      toast(`Status updated to ${targetStatus}`, 'info');
     } catch (err: any) {
-      alert(err.message || 'Failed to update status');
+      alert(err.message || 'Failed to update status', { type: 'error' });
     } finally {
       setUpdatingStatus(false);
     }
@@ -463,8 +469,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setShowStatusModal(false);
       fetchDetail();
+      toast(`Status updated to ${newStatus}`, 'info');
     } catch (err: any) {
-      alert(err.message || 'Failed to update status');
+      alert(err.message || 'Failed to update status', { type: 'error' });
     }
   };
 
@@ -477,19 +484,25 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       fetchDetail();
     } catch (err: any) {
-      alert(err.message || 'Failed to update service item');
+      alert(err.message || 'Failed to update service item', { type: 'error' });
     }
   };
 
   const handleDeleteLabour = async (lid: number) => {
-    if (!window.confirm('Are you sure you want to remove this service line from the job card?')) return;
+    const confirmed = await confirm('Are you sure you want to remove this service line from the job card?', {
+      title: 'Remove Service Item',
+      confirmText: 'Remove',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiRequest(`/job-cards/${jobCardId}/labour-items/${lid}`, {
         method: 'DELETE',
       });
       fetchDetail();
+      toast('Service item removed', 'info');
     } catch (err: any) {
-      alert(err.message || 'Failed to remove service item');
+      alert(err.message || 'Failed to remove service item', { type: 'error' });
     }
   };
 
@@ -502,19 +515,25 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       fetchDetail();
     } catch (err: any) {
-      alert(err.message || 'Failed to update part item');
+      alert(err.message || 'Failed to update part item', { type: 'error' });
     }
   };
 
   const handleDeletePart = async (pid: number) => {
-    if (!window.confirm('Are you sure you want to remove this part item from the job card?')) return;
+    const confirmed = await confirm('Are you sure you want to remove this part item from the job card?', {
+      title: 'Remove Part Item',
+      confirmText: 'Remove',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiRequest(`/job-cards/${jobCardId}/parts-items/${pid}`, {
         method: 'DELETE',
       });
       fetchDetail();
+      toast('Part item removed', 'info');
     } catch (err: any) {
-      alert(err.message || 'Failed to remove part item');
+      alert(err.message || 'Failed to remove part item', { type: 'error' });
     }
   };
 
@@ -544,8 +563,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       setLabourCatalogId(undefined);
       setShowAddLabourModal(false);
       fetchDetail();
+      toast('Service item added', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to add service item');
+      alert(err.message || 'Failed to add service item', { type: 'error' });
     }
   };
 
@@ -579,8 +599,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       setPartCatalogId(undefined);
       setShowAddPartModal(false);
       fetchDetail();
+      toast('Part item added', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to add part item');
+      alert(err.message || 'Failed to add part item', { type: 'error' });
     }
   };
 
@@ -613,8 +634,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setEditLabourItem(null);
       fetchDetail();
+      toast('Service line updated', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update service line');
+      alert(err.message || 'Failed to update service line', { type: 'error' });
     }
   };
 
@@ -651,8 +673,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setEditPartItem(null);
       fetchDetail();
+      toast('Part item updated', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update part item');
+      alert(err.message || 'Failed to update part item', { type: 'error' });
     }
   };
 
@@ -673,7 +696,10 @@ export const JobCardDetailPage: React.FC<Props> = ({
   const handleRecordApprovalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!approvalName.trim()) {
-      alert('Please provide customer/approver name');
+      alert('Please provide customer/approver name', {
+        title: 'Missing Customer Name',
+        type: 'warning',
+      });
       return;
     }
     const line_approvals: any[] = [];
@@ -704,8 +730,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setShowApprovalModal(false);
       fetchDetail();
+      toast('Customer approval decisions recorded', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to record customer approvals');
+      alert(err.message || 'Failed to record customer approvals', { type: 'error' });
     }
   };
 
@@ -730,8 +757,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       setShowAddComplaintModal(false);
       setNewComplaintDesc('');
       await fetchDetail();
+      toast('Observation added', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to add complaint / finding');
+      alert(err.message || 'Failed to add complaint / finding', { type: 'error' });
     } finally {
       setSavingComplaint(false);
     }
@@ -758,22 +786,29 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setEditingComplaint(null);
       await fetchDetail();
+      toast('Observation updated', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update complaint / finding');
+      alert(err.message || 'Failed to update complaint / finding', { type: 'error' });
     } finally {
       setUpdatingComplaint(false);
     }
   };
 
   const handleDeleteComplaint = async (cid: number) => {
-    if (!window.confirm('Are you sure you want to remove this complaint / observation?')) return;
+    const confirmed = await confirm('Are you sure you want to remove this complaint / observation?', {
+      title: 'Remove Observation',
+      confirmText: 'Remove',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     try {
       await apiRequest(`/job-cards/${jobCardId}/complaints/${cid}`, {
         method: 'DELETE'
       });
       await fetchDetail();
+      toast('Observation removed', 'info');
     } catch (err: any) {
-      alert(err.message || 'Failed to remove complaint');
+      alert(err.message || 'Failed to remove complaint', { type: 'error' });
     }
   };
 
@@ -841,8 +876,9 @@ export const JobCardDetailPage: React.FC<Props> = ({
       });
       setShowInspectionModal(false);
       await fetchDetail();
+      toast('Inspection checklist saved', 'success');
     } catch (err: any) {
-      alert(err.message || 'Failed to update inspections');
+      alert(err.message || 'Failed to update inspections', { type: 'error' });
     } finally {
       setSavingInspections(false);
     }

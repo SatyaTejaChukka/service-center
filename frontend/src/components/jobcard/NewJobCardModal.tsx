@@ -19,6 +19,7 @@ import {
 import { apiRequest, getPdfUrl } from '../../lib/api';
 import { formatINR } from '../../lib/formatters';
 import { useAuth } from '../../context/AuthContext';
+import { useDesktopModal } from '../../context/DesktopModalContext';
 import { WhatsAppPreviewModal } from '../common/WhatsAppPreviewModal';
 import { buildJobCardIntakeMessage } from '../../lib/whatsapp';
 
@@ -47,6 +48,7 @@ const STANDARD_CATEGORIES = [
 
 export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCreated }) => {
   const { user, workshop } = useAuth();
+  const { alert } = useDesktopModal();
   const [step, setStep] = useState(1);
   const [isFullEstimateFlow, setIsFullEstimateFlow] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -366,7 +368,10 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
           setLastServiceInfo(vDetail.history[0]);
         }
       } else {
-        alert('No registered vehicle found. You can fill out the form to register new.');
+        alert('No registered vehicle found. You can fill out the form to register new.', {
+          title: 'Vehicle Lookup',
+          type: 'info',
+        });
       }
     } catch (err) {
       console.error(err);
@@ -446,12 +451,18 @@ export const NewJobCardModal: React.FC<Props> = ({ isOpen, onClose, onJobCardCre
   // Vehicle moves to bay for road test and inspection
   const handleQuickIntakeSubmit = async () => {
     if (!customerData.name.trim() || !customerData.phone.trim()) {
-      alert('Please enter Customer Name and Phone Number in Step 1.');
+      alert('Please enter Customer Name and Phone Number in Step 1.', {
+        title: 'Missing Details',
+        type: 'warning',
+      });
       setStep(1);
       return;
     }
     if (!vehicleData.registration_number.trim()) {
-      alert('Please enter Vehicle Registration Number in Step 1.');
+      alert('Please enter Vehicle Registration Number in Step 1.', {
+        title: 'Missing Details',
+        type: 'warning',
+      });
       setStep(1);
       return;
     }

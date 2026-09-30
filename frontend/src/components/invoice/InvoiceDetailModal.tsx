@@ -15,6 +15,7 @@ import {
 import { apiRequest, getPdfUrl } from '../../lib/api';
 import { formatINR } from '../../lib/formatters';
 import { useAuth } from '../../context/AuthContext';
+import { useDesktopModal } from '../../context/DesktopModalContext';
 import { WhatsAppPreviewModal } from '../common/WhatsAppPreviewModal';
 import { buildInvoiceReceiptMessage, buildReadyForDeliveryMessage } from '../../lib/whatsapp';
 
@@ -38,6 +39,7 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   onNavigateToVehicle,
 }) => {
   const { user, workshop } = useAuth();
+  const { alert, confirm, prompt, toast } = useDesktopModal();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,15 +98,21 @@ export const InvoiceDetailModal: React.FC<Props> = ({
   }, [isOpen, invoiceId]);
 
   const handleFinalize = async () => {
-    if (!window.confirm('Are you sure you want to finalise this invoice? Once finalised, line items will be locked.')) {
+    const confirmed = await confirm('Are you sure you want to finalise this invoice? Once finalised, line items will be sealed and locked.', {
+      title: 'Finalise Invoice',
+      confirmText: 'Yes, Finalise',
+      variant: 'primary',
+    });
+    if (!confirmed) {
       return;
     }
     try {
       await apiRequest(`/invoices/${invoiceId}/finalize`, { method: 'POST' });
       fetchInvoice();
+      toast('Invoice finalised and sealed successfully', 'success');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Finalisation failed');
+      alert(err.message || 'Finalisation failed', { type: 'error', title: 'Finalisation Failed' });
     }
   };
 
@@ -122,12 +130,17 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       fetchInvoice();
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Failed to update item status');
+      alert(err.message || 'Failed to update item status', { type: 'error' });
     }
   };
 
   const handleReversePayment = async (paymentId: number) => {
-    const reason = window.prompt('Enter reason for payment reversal (e.g. Mistaken receipt entry):');
+    const reason = await prompt('Enter reason for payment reversal (e.g. Mistaken receipt entry):', {
+      title: 'Payment Reversal',
+      placeholder: 'e.g. Receipt correction',
+      confirmText: 'Reverse Receipt',
+      required: true,
+    });
     if (!reason || !reason.trim()) return;
     try {
       await apiRequest(`/invoices/${invoiceId}/payments/${paymentId}/reverse`, {
@@ -135,9 +148,10 @@ export const InvoiceDetailModal: React.FC<Props> = ({
         body: JSON.stringify({ reason: reason.trim() })
       });
       fetchInvoice();
+      toast('Payment reversed successfully', 'success');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Payment reversal failed');
+      alert(err.message || 'Payment reversal failed', { type: 'error', title: 'Reversal Error' });
     }
   };
 
@@ -157,9 +171,10 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       setPayRef('');
       setPayNote('');
       fetchInvoice();
+      toast('Payment recorded successfully', 'success');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Payment recording failed');
+      alert(err.message || 'Payment recording failed', { type: 'error', title: 'Payment Error' });
     }
   };
 
@@ -175,9 +190,10 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       });
       setShowChargeModal(false);
       fetchInvoice();
+      toast('Other charge added', 'success');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Failed to add charge');
+      alert(err.message || 'Failed to add charge', { type: 'error' });
     }
   };
 
@@ -193,16 +209,20 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       });
       setShowDiscountModal(false);
       fetchInvoice();
+      toast('Discount applied', 'success');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Failed to apply discount');
+      alert(err.message || 'Failed to apply discount', { type: 'error' });
     }
   };
 
   const handleVoidInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voidReason.trim()) {
-      alert('Please state a reason for voiding this invoice');
+      alert('Please state a reason for voiding this invoice', {
+        title: 'Void Reason Required',
+        type: 'warning',
+      });
       return;
     }
     try {
@@ -212,9 +232,10 @@ export const InvoiceDetailModal: React.FC<Props> = ({
       });
       setShowVoidModal(false);
       fetchInvoice();
+      toast('Invoice marked as VOID', 'info');
       if (onInvoiceUpdated) onInvoiceUpdated();
     } catch (err: any) {
-      alert(err.message || 'Void operation failed');
+      alert(err.message || 'Void operation failed', { type: 'error' });
     }
   };
 
