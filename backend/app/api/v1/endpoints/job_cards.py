@@ -806,9 +806,10 @@ def get_job_card_pdf_endpoint(
 
     pdf_bytes = generate_job_card_pdf(jc, profile, template=template)
     suffix = "BaySheet" if template.lower() in ("technician", "bay", "baysheet", "tech") else "WorkOrder"
-    filename = f"{jc.job_card_number}_{suffix}.pdf"
+    reg = (jc.vehicle.registration_number if jc.vehicle else "").strip().replace(" ", "_")
+    filename = f"{reg}_{jc.job_card_number}_{suffix}.pdf" if reg else f"{jc.job_card_number}_{suffix}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={filename}"}
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
     )

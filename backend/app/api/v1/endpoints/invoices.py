@@ -650,11 +650,14 @@ def get_invoice_pdf_endpoint(
         if save_to_disk:
             db.commit()
 
-    filename = f"{inv.invoice_number or 'draft_invoice'}.pdf"
+    veh = inv.job_card.vehicle if (inv.job_card and inv.job_card.vehicle) else None
+    reg = (veh.registration_number if veh else "").strip().replace(" ", "_")
+    inv_num = inv.invoice_number or 'draft_invoice'
+    filename = f"{reg}_{inv_num}.pdf" if reg else f"{inv_num}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename={filename}"}
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
     )
 
 # --- Payment Endpoints ---

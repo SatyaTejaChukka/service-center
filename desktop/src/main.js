@@ -239,6 +239,38 @@ async function bootApplication() {
     logMessage(`[Renderer Console] ${message} (line ${line} in ${sourceId})`);
   });
 
+  // Intercept and configure child windows (e.g. PDF viewers)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    logMessage(`[Desktop] Opening document viewer window for URL: ${url}`);
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 1100,
+        height: 850,
+        minWidth: 800,
+        minHeight: 600,
+        center: true,
+        autoHideMenuBar: true,
+        icon: path.join(__dirname, '../assets/icon.ico'),
+        title: 'Pushpa Raj Automotive - Document Viewer',
+        webPreferences: {
+          sandbox: false,
+          contextIsolation: true,
+          webSecurity: false,
+        },
+      },
+    };
+  });
+
+  mainWindow.webContents.on('did-create-window', (childWindow, { url }) => {
+    childWindow.on('page-title-updated', (event, title) => {
+      if (!title || title.trim().toLowerCase() === 'anonymous') {
+        event.preventDefault();
+        childWindow.setTitle('Pushpa Raj Automotive - Document Viewer');
+      }
+    });
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
