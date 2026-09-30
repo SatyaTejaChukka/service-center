@@ -51,11 +51,15 @@ function logMessage(msg) {
 }
 
 // 2. Poll Backend Health
-function waitForBackend(port, maxAttempts = 50, intervalMs = 400) {
+function waitForBackend(port, maxAttempts = 60, intervalMs = 400, onProgress = null) {
   return new Promise((resolve) => {
     let attempts = 0;
     const check = () => {
       attempts++;
+      if (onProgress) {
+        const pct = Math.min(35 + Math.floor((attempts / 15) * 55), 90);
+        onProgress(pct);
+      }
       const req = http.get(`http://127.0.0.1:${port}/api/v1/auth/setup-status`, (res) => {
         if (res.statusCode === 200 || res.statusCode === 401) {
           resolve(true);
@@ -89,8 +93,8 @@ async function bootApplication() {
 
   // Create Splash Preloader
   splashWindow = new BrowserWindow({
-    width: 480,
-    height: 310,
+    width: 530,
+    height: 330,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -104,12 +108,21 @@ async function bootApplication() {
     },
   });
 
+  const updateSplash = (message, percent) => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      try {
+        splashWindow.webContents.send('splash-status', { message, percent });
+      } catch {}
+    }
+  };
+
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
 
   try {
     // A. Allocate free port
     backendPort = await findFreePort(8000, 8099);
     logMessage(`[Desktop] Allocated available port for backend: ${backendPort}`);
+    updateSplash('Allocating high-speed internal port...', 20);
   } catch (err) {
     logMessage(`[Desktop] Port allocation error: ${err.message}`);
     backendPort = 8000;
@@ -171,8 +184,12 @@ async function bootApplication() {
     return;
   }
 
+  updateSplash('Vehicle check-in & intake inspection...', 25);
+
   // D. Wait for backend ready
-  const isHealthy = await waitForBackend(backendPort, 60, 400);
+  const isHealthy = await waitForBackend(backendPort, 60, 400, (pct) => {
+    updateSplash('Loading vehicle service history & parts catalog...', pct);
+  });
   if (!isHealthy) {
     logMessage('[Desktop] Backend failed health check after 24 seconds.');
     dialog.showErrorBox(
@@ -184,6 +201,7 @@ async function bootApplication() {
   }
 
   logMessage('[Desktop] Backend server is healthy! Initializing main window...');
+  updateSplash('Final quality inspection & bay check...', 95);
 
   // E. Create Main Window
   mainWindow = new BrowserWindow({
@@ -210,15 +228,18 @@ async function bootApplication() {
   const showMainWindow = () => {
     if (isWindowShown) return;
     isWindowShown = true;
+    updateSplash('Service Complete • Vehicle Ready for Delivery', 100);
     logMessage('[Desktop] Showing main window and dismissing splash screen.');
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.destroy();
-      splashWindow = null;
-    }
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    setTimeout(() => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.destroy();
+        splashWindow = null;
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }, 320);
   };
 
   // Register transition handlers BEFORE loading content
